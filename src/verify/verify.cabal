@@ -1,0 +1,20 @@
+cabal-version:      3.0
+name:               verify
+version:            0.1.0.0
+build-type:         Simple
+
+-- Minimal package: it builds nothing of its own. Its only job is to
+-- give `cabal exec` (called from server.js) an environment where
+-- `liquidhaskell` is already resolved, so that
+--   cabal exec -- ghc -fplugin=LiquidHaskell -fno-code <file.hs>
+-- runs real Liquid Haskell verification on whatever the converter
+-- generated (that generated file is self-contained, so it doesn't
+-- need to be one of this package's own modules).
+
+library
+    exposed-modules:  Placeholder
+    build-depends:    base,
+                      liquidhaskell == 0.9.8.2,
+                      containers
+    hs-source-dirs:   src
+    default-language: GHC2021

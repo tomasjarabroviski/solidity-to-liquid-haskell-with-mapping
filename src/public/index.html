@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solidity to Liquid Haskell</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/monokai.min.css" />
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f5f7fa;
+            --border-color: #e1e4e8;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 90%;
+            height: 90%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .editor-container {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .editor-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            overflow: hidden;
+            max-height: 100%;
+        }
+
+        h3 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+
+        .editor {
+            flex: 1;
+            border-radius: 6px;
+            overflow: auto;
+            max-height: 60vh;
+        }
+
+        .CodeMirror {
+            height: 100%;
+        }
+
+        .validation-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .validation-status.valid {
+            background-color: #e3fcef;
+            color: #0a7c42;
+            border: 1px solid #0a7c42;
+        }
+
+        .validation-status.invalid {
+            background-color: #fee7e7;
+            color: #d63031;
+            border: 1px solid #d63031;
+        }
+
+        button {
+            align-self: center;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            background: var(--primary-color);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74,144,226,0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.loading {
+            background: #a0a0a0;
+            pointer-events: none;
+        }
+
+        button:disabled {
+            background: #c7ccd1;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        button:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Solidity to Liquid Haskell</h1>
+        <div class="editor-container">
+            <div class="editor-box">
+                <h3>Solidity input</h3>
+                <div id="solidityEditor" class="editor"></div>
+                <div id="solidityValidation" class="validation-status">Start typing to validate...</div>
+            </div>
+            <div class="editor-box">
+                <h3>Haskell output with liquid annotations</h3>
+                <div id="haskellEditor" class="editor"></div>
+                <div id="haskellValidation" class="validation-status"></div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+            <button onclick="convertCode()" id="convertBtn">Convert</button>
+            <button onclick="validateHaskellWithLiquidHaskell()" id="validateBtn" disabled title="Run Convert first">Validate Liquid</button>
+        </div>
+    </div>
+
+    <!-- Add CodeMirror JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/solidity/solidity.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/haskell/haskell.min.js"></script>
+    <script>
+        const solidityEditor = CodeMirror(document.getElementById('solidityEditor'), {
+            mode: 'solidity',
+            theme: 'monokai',
+            lineNumbers: true
+        });
+
+        const haskellEditor = CodeMirror(document.getElementById('haskellEditor'), {
+            mode: 'haskell',
+            theme: 'monokai',
+            lineNumbers: true
+        });
+
+        const validateBtn = document.getElementById('validateBtn');
+
+        // "Validate Liquid" is only meaningful right after a successful
+        // "Convert" of the code currently in the Solidity editor. Any edit
+        // on the left side invalidates that, since the Haskell on the
+        // right no longer necessarily matches it.
+        function disableValidate(reason) {
+            validateBtn.disabled = true;
+            validateBtn.title = reason;
+        }
+
+        function enableValidate() {
+            validateBtn.disabled = false;
+            validateBtn.title = '';
+        }
+
+        async function validateSolidity() {
+            const code = solidityEditor.getValue();
+            const validationDiv = document.getElementById('solidityValidation');
+
+            if (!code.trim()) {
+                validationDiv.className = 'validation-status';
+                validationDiv.textContent = 'Start typing to validate...';
+                return;
+            }
+
+            try {
+                const response = await fetch('/validate-solidity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const result = await response.json();
+                validationDiv.className = `validation-status ${result.valid ? 'valid' : 'invalid'}`;
+                validationDiv.textContent = result.valid ? '✓ Valid Solidity code' : `✗ Invalid: ${result.error}`;
+            } catch (error) {
+                validationDiv.className = 'validation-status invalid';
+                validationDiv.textContent = `✗ Error: ${error.message}`;
+            }
+        }
+
+        async function validateHaskell(code) {
+            const validationDiv = document.getElementById('haskellValidation');
+
+            try {
+                const response = await fetch('/validate-haskell', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const result = await response.json();
+                validationDiv.className = `validation-status ${result.valid ? 'valid' : 'invalid'}`;
+                validationDiv.textContent = result.valid ? '✓ Valid Haskell code' : `✗ Invalid: ${result.error}`;
+            } catch (error) {
+                validationDiv.className = 'validation-status invalid';
+                validationDiv.textContent = `✗ Error: ${error.message}`;
+            }
+        }
+
+        async function validateHaskellWithLiquidHaskell() {
+            if (validateBtn.disabled) return;
+
+            const validationDiv = document.getElementById('haskellValidation');
+            const btn = validateBtn;
+            const haskellCode = haskellEditor.getValue();
+
+            if (!haskellCode.trim()) {
+                validationDiv.className = 'validation-status';
+                validationDiv.textContent = 'No Haskell code to validate.';
+                return;
+            }
+
+            validationDiv.className = 'validation-status';
+            validationDiv.textContent = 'Validating...';
+            btn.classList.add('loading');
+            btn.textContent = 'Validating...';
+
+            try {
+                const response = await fetch("/validate-haskell", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: haskellCode })
+                });
+
+                const result = await response.json();
+
+                if (result.valid) {
+                    validationDiv.className = 'validation-status valid';
+                    validationDiv.textContent = "✓ Safe Haskell Code (Liquid Haskell)";
+                } else {
+                    validationDiv.className = 'validation-status invalid';
+                    validationDiv.textContent = `✗ Unsafe Haskell Code (Liquid Haskell)\n${result.error || ''}`;
+                }
+
+            } catch (error) {
+                validationDiv.className = 'validation-status invalid';
+                validationDiv.textContent = `✗ Error: ${error.message}`;
+            } finally {
+                btn.classList.remove('loading');
+                btn.textContent = 'Validate Liquid';
+            }
+        }
+
+        async function convertCode() {
+            const btn = document.getElementById('convertBtn');
+            const solidityCode = solidityEditor.getValue();
+            const validationDiv = document.getElementById('haskellValidation');
+
+            // Any previous conversion is stale as soon as a new one starts.
+            disableValidate('Run Convert first');
+
+            btn.classList.add('loading');
+            btn.textContent = 'Converting...';
+            validationDiv.className = 'validation-status';
+            validationDiv.textContent = 'Waiting for conversion...';
+
+            try {
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ solidity: solidityCode })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    haskellEditor.setValue(`Error: ${data.error}`);
+                    validationDiv.className = 'validation-status invalid';
+                    validationDiv.textContent = 'Conversion failed.';
+                    // Keep Validate Liquid disabled: there's no valid
+                    // Haskell output to check.
+                } else {
+                    haskellEditor.setValue(data.haskell);
+                    validationDiv.className = 'validation-status';
+                    validationDiv.textContent = 'Conversion successful. Click "Validate Liquid" to check.';
+                    enableValidate();
+                }
+            } catch (error) {
+                haskellEditor.setValue(`Error: ${error.message}`);
+                validationDiv.className = 'validation-status invalid';
+                validationDiv.textContent = `✗ Error: ${error.message}`;
+            } finally {
+                btn.classList.remove('loading');
+                btn.textContent = 'Convert';
+            }
+        }
+
+        // Add syntax validation on input
+        solidityEditor.on('change', () => {
+            validateSolidity();
+            // The Solidity side changed, so whatever is on the right no
+            // longer necessarily matches it: force a new Convert before
+            // Validate Liquid can run again.
+            disableValidate('Run Convert first');
+        });
+    </script>
+</body>
+</html>

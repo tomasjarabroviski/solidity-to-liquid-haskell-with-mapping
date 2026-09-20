@@ -1,0 +1,23 @@
+{
+  "dependencies": {
+    "@solidity-parser/parser": "^0.19.0",
+    "express": "^4.21.2"
+  },
+  "name": "test-solidity-parser",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "comp": "node scripts/compile-all.js",
+    "dev": "nodemon",
+    "start": "node src/server.js",
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9"
+  }
+}
