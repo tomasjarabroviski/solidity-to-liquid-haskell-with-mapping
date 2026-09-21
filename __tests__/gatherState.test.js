@@ -55,10 +55,16 @@ describe('gatherStateDefinitions', () => {
             }]
         };
         const result = gatherStateDefinitions(contract, 'TestContract');
+        // A partir del soporte de mappings, cada variable de estado procesada
+        // (no las 4 estandar msg/block/balance/address) trae ademas
+        // isMapping/mapKeyType, que describen si es un mapping(KeyType => uint)
+        // y, de serlo, el tipo Haskell de la clave.
         expect(result.variables).toContainEqual({
             name: 'countTestContract',
             type: 'uint256',
-            originalName: 'Count'
+            originalName: 'Count',
+            isMapping: false,
+            mapKeyType: null
         });
     });
 
@@ -150,12 +156,16 @@ describe('gatherStateDefinitions - variable processing', () => {
         expect(result.variables).toContainEqual({
             name: 'firstVarTestContract',
             type: 'uint256',
-            originalName: 'firstVar'
+            originalName: 'firstVar',
+            isMapping: false,
+            mapKeyType: null
         });
         expect(result.variables).toContainEqual({
             name: 'secondVarTestContract',
             type: 'bool',
-            originalName: 'SecondVar'
+            originalName: 'SecondVar',
+            isMapping: false,
+            mapKeyType: null
         });
         expect(result.nameMap.get('SecondVar')).toBe('secondVarTestContract');
     });

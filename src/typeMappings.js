@@ -89,17 +89,7 @@ type Amount = Int
 type Uint = Int
 
 type Address = Int
-{-@ type Address = Int @-}
-
-{-@ inline maxValue @-}
-maxValue :: Int
-maxValue = 10
-
-{-@ safeSum :: x:{v:Int | v >= 0 && v < maxValue}
-            -> y:{v:Int | v >= 0 && v < maxValue - x}
-            ->   {v:Int | v >= 0 && v < maxValue} @-}
-safeSum :: Int -> Int -> Int
-safeSum x y = x + y`;
+{-@ type Address = Int @-}`;
 
 module.exports = {
   solidityTypeToHaskellType,

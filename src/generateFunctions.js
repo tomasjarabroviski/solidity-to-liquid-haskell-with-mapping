@@ -213,6 +213,42 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
     }
   });
 
+  // Default-initialize any state variable that Solidity would implicitly
+  // zero-initialize (address(0), 0, false, "", or the first enum member)
+  // but that the constructor body above never explicitly assigns. Without
+  // this, the generated record literal is missing fields; GHC still
+  // compiles it (warnings are suppressed) by inserting a hidden
+  // "recConError" thunk for each missing field, which then breaks Liquid
+  // Haskell's PLE with a "casesToLg"/"Unexpected empty cases" error.
+  // Mapping-typed vars are already defaulted to empWB above, and the
+  // msg/block/balance/address fields are always injected standard fields,
+  // so both are skipped here.
+  const assignedFields = new Set(assignments.map(a => a.split('=')[0].trim()));
+  const standardFields = new Set([
+    `msg${stateInfo.contractName}`,
+    `block${stateInfo.contractName}`,
+    `balance${stateInfo.contractName}`,
+    `address${stateInfo.contractName}`,
+  ]);
+  for (const v of (stateInfo.variables || [])) {
+    if (v.isMapping) continue;
+    if (standardFields.has(v.name)) continue;
+    if (assignedFields.has(v.name)) continue;
+
+    let defaultValue = '0';
+    if (v.type === 'Bool') {
+      defaultValue = 'False';
+    } else if (v.type === 'String') {
+      defaultValue = '""';
+    } else {
+      const matchingEnum = (stateInfo.enums || []).find(e => e.name === v.type);
+      if (matchingEnum && matchingEnum.members && matchingEnum.members.length > 0) {
+        defaultValue = matchingEnum.members[0].name;
+      }
+    }
+    assignments.push(`${v.name} = ${defaultValue}`);
+  }
+
   // Format assignments with proper indentation and commas
   return assignments
   .map((assign, i) => i === 0 ? assign : `              ${assign}`)

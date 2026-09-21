@@ -130,10 +130,6 @@ function translateExpression(expr, params, stateInfo) {
     const left = translateExpression(expr.left, params, stateInfo);
     const right = translateExpression(expr.right, params, stateInfo);
 
-    if (expr.operator === '+') {
-        return `(safeSum ${left} ${right})`;
-    }
-
     const operator = translateOperator(expr.operator);
     return `(${left} ${operator} ${right})`;
   }
@@ -258,8 +254,7 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
     if (expr.type === 'UnaryOperation' && expr.operator === '++') {
       const originalName = expr.subExpression.name;
       const normalizedName = stateInfo.nameMap.get(originalName) || originalName;
-      //const code = `st { ${normalizedName} = ((${normalizedName} st) + 1) }`;
-      const code = `st { ${normalizedName} = (safeSum (${normalizedName} st) 1) }`;
+      const code = `st { ${normalizedName} = ((${normalizedName} st) + 1) }`;
 
       return { code: code, isLocal: false };
     }
@@ -274,12 +269,7 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
       const normalizedLeft = stateInfo.nameMap.get(leftSide) || leftSide;
       const rightSide = translateExpression(expr.right, params, stateInfo);
       const op = expr.operator === '+=' ? '+' : '-';
-      //return { code: `st { ${normalizedLeft} = ((${normalizedLeft} st) ${op} ${rightSide}) }`, isLocal: false };
-      if (expr.operator === '+=') {
-        return { code: `st { ${normalizedLeft} = (safeSum (${normalizedLeft} st) ${rightSide}) }`, isLocal: false };
-      } else {
-        return { code: `st { ${normalizedLeft} = ((${normalizedLeft} st) - ${rightSide}) }`, isLocal: false };
-      }
+      return { code: `st { ${normalizedLeft} = ((${normalizedLeft} st) ${op} ${rightSide}) }`, isLocal: false };
     }
   }
   if (statement.type === 'ReturnStatement') {
@@ -551,11 +541,11 @@ function translateMappingWrite(expr, params, stateInfo, op) {
   }
 
   // Nota: a diferencia de las variables de estado escalares (que usan
-  // `safeSum` para +=/++, ver translator.js mas arriba), aca usamos `+`/`-`
-  // en crudo, igual que lo hace la tesis a mano en depositWithCB/withdrawWithCB
+  // `safeSum` para +=/++, ver mas arriba), aca usamos `+`/`-` en crudo, igual
+  // que lo hace la tesis a mano en depositWithCB/withdrawWithCB
   // (BankExamples.hs): el propio setWB ya exige `val >= 0`, asi que un retiro
-  // (-=) que deja el balance negativo no tipa, sin necesitar un tope artificial
-  // como el `maxValue` de safeSum.
+  // (-=) que deja el balance negativo no tipa, sin necesitar un tope
+  // artificial como el `maxValue` de safeSum.
   let newValueExpr;
   if (op === '=') {
     newValueExpr = rightExpr;

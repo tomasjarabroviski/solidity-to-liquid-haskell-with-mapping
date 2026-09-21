@@ -100,11 +100,12 @@ cd solidity-to-lh
 
 npm install
 
-# Build the verify/ project once. This resolves and compiles
+# Clean and Build the verify/ project once. This resolves and compiles
 # LiquidHaskell and its dependencies for real verification through the
 # web interface's "Validate Liquid" button. Can take several minutes
 # the first time.
 cd src/verify
+cabal clean
 cabal build
 cd ../..
 ```
