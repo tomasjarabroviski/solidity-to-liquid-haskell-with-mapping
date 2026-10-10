@@ -107,7 +107,6 @@ La tesis evaluó la herramienta con los ejemplos de Azure y chequeó que el cód
 ### 6.2 Regresión
 
 - Los contratos de la tesis (`test_contracts/`, `azure_require/`) dan los mismos resultados que antes en modo normal.
-- La única diferencia es un caso que antes no compilaba y la interfaz web mostraba como "Unsafe" (ver sección 7).
 - Los 43 contratos siguen compilando (`npm run comp`), y los tests unitarios pasaron de 125 a 140.
 
 ## 7. Errores corregidos del traductor original
