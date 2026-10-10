@@ -84,8 +84,8 @@ app.post('/validate-haskell', (req, res) => {
 
 app.post('/convert', async (req, res) => {
     try {
-        const { solidity } = req.body;
-        const haskell = solidityToHaskell(solidity);
+        const { solidity, checkOverflow } = req.body;
+        const haskell = solidityToHaskell(solidity, { checkOverflow: !!checkOverflow });
         res.json({ haskell });
     } catch (error) {
         res.status(400).json({ error: error.message });

@@ -154,6 +154,7 @@
         <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
             <button onclick="convertCode()" id="convertBtn">Convert</button>
             <button onclick="validateHaskellWithLiquidHaskell()" id="validateBtn" disabled title="Run Convert first">Validate Liquid</button>
+            <label title="Bound uint by 2^256-1 and evaluate conditions with wrapping arithmetic (Solidity &lt; 0.8)"><input type="checkbox" id="checkOverflow"> Check overflow</label>
         </div>
     </div>
 
@@ -296,7 +297,10 @@
                 const response = await fetch('/convert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ solidity: solidityCode })
+                    body: JSON.stringify({
+                        solidity: solidityCode,
+                        checkOverflow: document.getElementById('checkOverflow').checked
+                    })
                 });
 
                 const data = await response.json();

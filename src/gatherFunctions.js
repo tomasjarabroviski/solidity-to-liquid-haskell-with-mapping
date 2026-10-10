@@ -63,12 +63,16 @@ function gatherFunctionDefinitions(contractNode, contractName='') {
 
   for (let subNode of contractNode.subNodes) {
     if (subNode.type === 'FunctionDefinition') {
-      const originalName = subNode.name || 'constructor';
+      // Pre-0.5 contracts declare the constructor as a function named like
+      // the contract (`function Token(...)`); the parser flags it as such.
+      const originalName = subNode.isConstructor ? 'constructor' : (subNode.name || 'constructor');
+      // `constant` is the pre-0.5 spelling of `view`.
+      const isView = subNode.stateMutability === 'view' || subNode.stateMutability === 'constant';
       const normalizedName = normalizeIdentifier(originalName);
 
       // Add return type information
       const returnType = subNode.returnParameters?.[0]?.typeName;
-      const hasReturnType = returnType && (subNode.stateMutability === 'view' || subNode.stateMutability === 'pure');
+      const hasReturnType = returnType && (isView || subNode.stateMutability === 'pure');
       
       nameMap.set(originalName, normalizedName);
 
@@ -87,7 +91,7 @@ function gatherFunctionDefinitions(contractNode, contractName='') {
         originalName: originalName,
         params: paramInfos,
         body: subNode.body ? subNode.body.statements : [],
-        isView: subNode.stateMutability === 'view',
+        isView,
         isPure: subNode.stateMutability === 'pure',
         returnType: hasReturnType ? solidityTypeToHaskellType(returnType, contractName) : null
       });

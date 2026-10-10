@@ -30,6 +30,7 @@ function generateHaskellFunctions(contractName, fnInfo, stateInfo) {
   let lines = [];
 
   for (let fn of fnInfo.functions) {
+    stateInfo.currentFunctionBody = fn.body;
     const uniqueParams = fn.params.map(p => ({
       originalName: p.name,
       name: createUniqueParamName(p.name, stateInfo.variables), 
@@ -98,17 +99,29 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
   // start out empty, mirroring Solidity's implicit default-initialization of
   // mappings (there is no literal mapping syntax to assign in the constructor
   // body, so this default is always correct for the common case).
+  // Per-key writes in the constructor (`balances[msg.sender] = v;`) are
+  // chained as setWB calls on top of empWB, in source order.
   const mappingVars = (stateInfo.variables || []).filter(v => v.isMapping);
-  for (const mappingVar of mappingVars) {
-    assignments.push(`${mappingVar.name} = empWB`);
-  }
+  const mappingExprs = new Map(mappingVars.map(v => [v.name, 'empWB']));
+  const toConstructorScope = code => code
+    .replace(/\(msg[A-Za-z0-9_]+\s+st\)/g, 'msgctx')
+    .replace(/\(block[A-Za-z0-9_]+\s+st\)/g, 'block');
 
   // Process constructor body
-  body.forEach(stmt => {
+  desugarChainedAssignments(body).forEach(stmt => {
     if (stmt.type === 'ExpressionStatement' && stmt.expression.type !== 'FunctionCall') {
-      // Per-key mapping writes inside a constructor (e.g. `balances[msg.sender] = v;`)
-      // aren't supported yet -- the mapping keeps its empWB default above.
-      if (stmt.expression.left && stmt.expression.left.type === 'IndexAccess') {
+      const left = stmt.expression.left;
+      if (left && left.type === 'IndexAccess') {
+        const mapVar = mappingVars.find(v => left.base.type === 'Identifier' && v.originalName === left.base.name);
+        const op = stmt.expression.operator;
+        if (!mapVar || !['=', '+=', '-='].includes(op)) return;
+        const key = toConstructorScope(translateExpression(left.index, uniqueParams, stateInfo));
+        let value = toConstructorScope(translateExpression(stmt.expression.right, uniqueParams, stateInfo));
+        const prev = mappingExprs.get(mapVar.name);
+        if (op !== '=') {
+          value = `((currentBalance (${prev}) ${key}) ${op === '+=' ? '+' : '-'} ${value})`;
+        }
+        mappingExprs.set(mapVar.name, `setWB (${prev}) ${key} ${value}`);
         return;
       }
       const leftVar = stmt.expression.left.name;
@@ -213,6 +226,10 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
     }
   });
 
+  for (const [name, expr] of mappingExprs) {
+    assignments.push(`${name} = ${expr}`);
+  }
+
   // Default-initialize any state variable that Solidity would implicitly
   // zero-initialize (address(0), 0, false, "", or the first enum member)
   // but that the constructor body above never explicitly assigns. Without
@@ -236,7 +253,11 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
     if (assignedFields.has(v.name)) continue;
 
     let defaultValue = '0';
-    if (v.type === 'Bool') {
+    const init = v.initialValue;
+    if (init && (init.type === 'NumberLiteral' || init.type === 'BooleanLiteral')) {
+      // Inline initializer (`uint count = 1;`) runs before the constructor body.
+      defaultValue = translateExpression(init, uniqueParams, stateInfo);
+    } else if (v.type === 'Bool') {
       defaultValue = 'False';
     } else if (v.type === 'String') {
       defaultValue = '""';
@@ -253,6 +274,32 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
   return assignments
   .map((assign, i) => i === 0 ? assign : `              ${assign}`)
   .join(',\n');
+}
+
+/**
+ * Splits chained assignments (`a = b = c;`) into `b = c; a = c;`, so each
+ * statement assigns a single target. The right-hand side is duplicated
+ * instead of reading `b` back, since the constructor builds a record literal
+ * whose fields can't refer to each other. The parser groups the chain as
+ * `(a = b) = c`, so operands are flattened rather than relying on nesting.
+ */
+function desugarChainedAssignments(body) {
+  const isAssignment = e => e && e.type === 'BinaryOperation' && e.operator === '=';
+  const flatten = e => isAssignment(e) ? [...flatten(e.left), ...flatten(e.right)] : [e];
+  const result = [];
+  for (const stmt of body) {
+    const expr = stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+    if (!isAssignment(expr) || !(isAssignment(expr.left) || isAssignment(expr.right))) {
+      result.push(stmt);
+      continue;
+    }
+    const operands = flatten(expr);
+    const value = operands.pop();
+    for (const target of operands.reverse()) {
+      result.push({ ...stmt, expression: { ...expr, left: target, right: value } });
+    }
+  }
+  return result;
 }
 
 /**

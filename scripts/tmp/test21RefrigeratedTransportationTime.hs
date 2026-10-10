@@ -40,11 +40,13 @@ data Block = Block {
 {-@ type Amount = {v: Int | v >= 0} @-}
 type Amount = Int
 
-{-@ type Uint = {v: Int | v >= 0} @-}
+{-@ type Uint = {v: Int | InRange v} @-}
 type Uint = Int
 
 type Address = Int
 {-@ type Address = Int @-}
+{-@ predicate InRange V = V >= 0 @-}
+
 
 {-@ revert :: {v:String | False} -> a  @-}
 revert :: String -> a
@@ -157,7 +159,20 @@ ingestTelemetry st humidity temperature timestamp = let
       st4 = st3 { complianceStatusRefrigeratedTransportationWithTime = False }
         in
           st4
-    else st2
+    else
+    let
+      st1 = if ((temperature > (maxTemperatureRefrigeratedTransportationWithTime st2)) || (temperature < (minTemperatureRefrigeratedTransportationWithTime st2)))
+        then
+        let
+          st1 = st2 { complianceSensorTypeRefrigeratedTransportationWithTime = TemperatureRefrigeratedTransportationWithTime }
+          st2 = st1 { complianceSensorReadingRefrigeratedTransportationWithTime = temperature }
+          st3 = st2 { complianceDetailRefrigeratedTransportationWithTime = "Temperature value out of range." }
+          st4 = st3 { complianceStatusRefrigeratedTransportationWithTime = False }
+            in
+              st4
+        else st2
+        in
+          st1
   st4 = if ((complianceStatusRefrigeratedTransportationWithTime st3) == False)
     then
     let

@@ -40,11 +40,13 @@ data Block = Block {
 {-@ type Amount = {v: Int | v >= 0} @-}
 type Amount = Int
 
-{-@ type Uint = {v: Int | v >= 0} @-}
+{-@ type Uint = {v: Int | InRange v} @-}
 type Uint = Int
 
 type Address = Int
 {-@ type Address = Int @-}
+{-@ predicate InRange V = V >= 0 @-}
+
 
 {-@ revert :: {v:String | False} -> a  @-}
 revert :: String -> a
@@ -103,7 +105,7 @@ buyItem st = let
         in
           st1
     else st1
-  bazaar = constructorBazaar (msgItemListing st) (blockItemListing st) (partyAItemListing st) 100 (partyBItemListing st) 100
+  bazaar = constructorBazaar (msgItemListing st2) (blockItemListing st2) (partyAItemListing st2) 100 (partyBItemListing st2) 100
   st3 = if (not(hasBalance bazaar (instanceBuyerItemListing st2) (itemPriceItemListing st2)))
     then
     let

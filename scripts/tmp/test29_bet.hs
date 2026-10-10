@@ -40,11 +40,13 @@ data Block = Block {
 {-@ type Amount = {v: Int | v >= 0} @-}
 type Amount = Int
 
-{-@ type Uint = {v: Int | v >= 0} @-}
+{-@ type Uint = {v: Int | InRange v} @-}
 type Uint = Int
 
 type Address = Int
 {-@ type Address = Int @-}
+{-@ predicate InRange V = V >= 0 @-}
+
 
 {-@ revert :: {v:String | False} -> a  @-}
 revert :: String -> a
@@ -119,7 +121,7 @@ win st winner = let
   st1 = if ((sender (msgBet st)) == (oracleBet st)) then st else revert "error"
   st2 = if (winner <= 1) then st1 else revert "error"
   st3 = if ((balanceBet st2) == (2 * (wagerBet st2))) then st2 else revert "error"
-  addressWinner = if (winner == 0) then (player1Bet st) else (player2Bet st)
+  addressWinner = if (winner == 0) then (player1Bet st3) else (player2Bet st3)
   st4 = callBet st3 (addressWinner) (balanceBet st3)
   st5 = st4 -- skipped require statement
     in

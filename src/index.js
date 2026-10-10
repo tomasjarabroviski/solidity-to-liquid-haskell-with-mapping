@@ -10,7 +10,7 @@ const { gatherStateDefinitions } = require('./gatherState');
 const { gatherFunctionDefinitions } = require('./gatherFunctions');
 const { generateHaskellData } = require('./generateData');
 const { generateHaskellFunctions, REVERT_FUNCTION } = require('./generateFunctions');
-const {MSG_DEFINITION} = require('./typeMappings');
+const { msgDefinition } = require('./typeMappings');
 const { LIQUID_ANNOTATIONS } = require('./liquidConditions');
 const { MAP_DEFINITION } = require('./mapDefinitions');
 
@@ -20,6 +20,9 @@ const { MAP_DEFINITION } = require('./mapDefinitions');
  * 
  * @function solidityToHaskell
  * @param {string} code - A string containing the Solidity source code to be translated.
+ * @param {Object} [options]
+ * @param {boolean} [options.checkOverflow=false] - Bound uint by 2^256-1 so
+ *   overflows are reported, and evaluate conditions with wrapping arithmetic.
  * @returns {string} A string containing all the generated Haskell code, separated into modules for each contract.
  * 
  * @example
@@ -34,7 +37,8 @@ const { MAP_DEFINITION } = require('./mapDefinitions');
  * const haskellResult = solidityToHaskell(solidityCode);
  * console.log(haskellResult);
  */
-function solidityToHaskell(code) {
+function solidityToHaskell(code, options = {}) {
+  const checkOverflow = !!options.checkOverflow;
   let ast;
   try {
     ast = parser.parse(code);
@@ -51,8 +55,11 @@ function solidityToHaskell(code) {
   // First pass: Gather all contracts
   parser.visit(ast, {
     ContractDefinition(node) {
-      const contractName = node.name || 'UnnamedContract';
+      // Liquid Haskell's spec parser rejects `_` in type constructor names
+      // (`Overflow_AddState`), and every generated name is suffixed with this.
+      const contractName = (node.name || 'UnnamedContract').replace(/_/g, '');
       const stateInfo = gatherStateDefinitions(node, contractName);
+      stateInfo.checkOverflow = checkOverflow;
       const fnInfo = gatherFunctionDefinitions(node, contractName);
 
       contracts.push({
@@ -78,7 +85,7 @@ function solidityToHaskell(code) {
     if (usesMappings) {
       haskellOutput.push('import qualified Data.Set as S');
     }
-    haskellOutput.push(MSG_DEFINITION);
+    haskellOutput.push(msgDefinition(checkOverflow));
     haskellOutput.push(REVERT_FUNCTION);
     if (usesMappings) {
       haskellOutput.push(MAP_DEFINITION);
@@ -107,7 +114,7 @@ function generateCallFunction(moduleName, stateInfo){
   // BalancedMap no deriva Eq, así que se excluye de esta condición de
   // igualdad estructural igual que 'balance' (además, comparar mappings
   // grandes con == no aportaría demasiado en esta postcondición).
-  .filter(variable => variable.originalName !== 'balance' && !variable.isMapping)
+  .filter(variable => variable.name !== 'balance' + moduleName && !variable.isMapping)
   .map(variable => variable.name);
 
   const equalityConditions = filteredNames

@@ -1,5 +1,16 @@
 const { translateExpression, translateOperator } = require('./translator');
 
+/**
+ * Translates a require/assert operand for use inside a refinement. Conditions
+ * use wrapping uint arithmetic (see translator.js), whose functions can't be
+ * called in a refinement: their uninterpreted logic names (addUL...) are used
+ * instead, which the Haskell versions are specified to be equal to.
+ */
+function toLogic(expr, params, stateInfo) {
+  return translateExpression(expr, params, stateInfo, { modular: true })
+    .replace(/\b(addU|subU|mulU)\b/g, '$1L');
+}
+
 
   
   /**
@@ -8,7 +19,7 @@ const { translateExpression, translateOperator } = require('./translator');
   function expressionToLiquidPredicate(expr, params = [], stateInfo, isPostCondition = false) {
     if (expr.type === 'Identifier') {
       // Handle simple identifier
-      let condition = translateExpression(expr, params, stateInfo);
+      let condition = toLogic(expr, params, stateInfo);
       if (condition === 'undefined') {
         return null;
       }
@@ -21,19 +32,20 @@ const { translateExpression, translateOperator } = require('./translator');
     if (!expr || expr.type !== 'BinaryOperation') return null;
   
     const op = translateOperator(expr.operator);
-    
-    // Check if condition involves a parameter
-    const paramName = params.find(p => 
-      expr.left.name === p.originalName || 
-      expr.right.name === p.originalName
-    )?.name;
-  
     const statePrefix = isPostCondition ? 'v' : 'st';
-  
+
+    // Check if condition involves a parameter anywhere (not only as a direct
+    // operand, e.g. `balances[msg.sender] - _value >= 0`). Pick the last one
+    // in the signature so all mentioned parameters are bound before it.
+    const translated = `${translateExpression(expr.left, params, stateInfo)} ${translateExpression(expr.right, params, stateInfo)}`;
+    const mentioned = params.filter(p =>
+      new RegExp(`(^|[^A-Za-z0-9_'])${p.name}($|[^A-Za-z0-9_'])`).test(translated));
+    const paramName = mentioned.length ? mentioned[mentioned.length - 1].name : undefined;
+
     if (paramName) {
       // Format as parameter condition
-      let left = translateExpression(expr.left, params, stateInfo).replace(/\bst\b/g, statePrefix);
-      let right = translateExpression(expr.right, params, stateInfo).replace(/\bst\b/g, statePrefix);
+      let left = toLogic(expr.left, params, stateInfo).replace(/\bst\b/g, statePrefix);
+      let right = toLogic(expr.right, params, stateInfo).replace(/\bst\b/g, statePrefix);
       return {
         type: 'param',
         param: paramName,
@@ -42,8 +54,8 @@ const { translateExpression, translateOperator } = require('./translator');
     }
   
     // Handle state conditions
-    let left = translateExpression(expr.left, params, stateInfo).replace(/\bst\b/g, statePrefix);
-    let right = translateExpression(expr.right, params, stateInfo).replace(/\bst\b/g, statePrefix);
+    let left = toLogic(expr.left, params, stateInfo).replace(/\bst\b/g, statePrefix);
+    let right = toLogic(expr.right, params, stateInfo).replace(/\bst\b/g, statePrefix);
 
     // TODO: Probably to fix this, it just worked for the example
     if(left === 'undefined') {
@@ -103,12 +115,16 @@ function generateLiquidAnnotation(contractName, fn, params, stateInfo) {
     .filter(p => p.type === 'param')
     .forEach(p => {
       // Check if the predicate references other parameters
+      const mentions = name => new RegExp(`(^|[^A-Za-z0-9_'])${name}($|[^A-Za-z0-9_'])`).test(p.predicate);
       const otherParams = params
-        .filter(param => param.name !== p.param && p.predicate.includes(param.name));
-      
+        .filter(param => param.name !== p.param && mentions(param.name));
+
       if (otherParams.length > 0) {
-        // Store the condition with the rightmost referenced parameter
-        const targetParam = otherParams[otherParams.length - 1].name;
+        // Store the condition with the rightmost referenced parameter (by
+        // position in the signature, including p.param itself), so every
+        // parameter it mentions is already bound when Liquid Haskell reads it.
+        const referenced = params.filter(param => param.name === p.param || mentions(param.name));
+        const targetParam = referenced[referenced.length - 1].name;
         if (!multiParamConditions.has(targetParam)) {
           multiParamConditions.set(targetParam, []);
         }

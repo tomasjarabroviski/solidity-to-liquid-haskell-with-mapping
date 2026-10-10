@@ -41,11 +41,13 @@ data Block = Block {
 {-@ type Amount = {v: Int | v >= 0} @-}
 type Amount = Int
 
-{-@ type Uint = {v: Int | v >= 0} @-}
+{-@ type Uint = {v: Int | InRange v} @-}
 type Uint = Int
 
 type Address = Int
 {-@ type Address = Int @-}
+{-@ predicate InRange V = V >= 0 @-}
+
 
 {-@ revert :: {v:String | False} -> a  @-}
 revert :: String -> a
@@ -246,7 +248,7 @@ lemma_get_remove_other ((k,_):xs) key key'
 
 -- ------------------- MapWithBalance -------------------
 
-{-@ data MapWithBalance k = MB {mMap :: (Map k {v : Int | v >= 0}), mBal :: {v : Int | v >= 0}} @-}
+{-@ data MapWithBalance k = MB {mMap :: (Map k {v : Int | InRange v}), mBal :: {v : Int | v >= 0}} @-}
 data MapWithBalance k = MB {mMap :: (Map k Int), mBal :: Int }
 
 {-@ type BalancedMap k = { m : MapWithBalance k | sumBids (mMap m) == mBal m} @-}
@@ -259,7 +261,7 @@ empWB = MB [] 0
 
 {-@reflect getWB @-}
 {-@ getWB :: (Eq k) => m : BalancedMap k -> key : {k | Set_mem key (keys (mMap m)) } ->
-        {r : Int |  Set_mem (key, r) (toSet (mMap m)) && r >= 0
+        {r : Int |  Set_mem (key, r) (toSet (mMap m)) && InRange r
                     }
 @-}
 getWB :: (Eq k) => BalancedMap k -> k -> Int
@@ -279,7 +281,7 @@ lemma_balance_add :: Eq k => Map k Int -> k -> Int -> Bool
 lemma_balance_add _ _ _ = True
 
 {-@ reflect addWB @-}
-{-@ addWB :: m: BalancedMap k -> key: {k | not (Set_mem key (keys (mMap m)))} -> value : {v : Int | v >= 0} ->
+{-@ addWB :: m: BalancedMap k -> key: {k | not (Set_mem key (keys (mMap m)))} -> value : {v : Int | InRange v} ->
             {n : BalancedMap k | AddWB_pred n m key value}
       @-}
 addWB :: Eq k =>  BalancedMap k -> k -> Int -> BalancedMap k
@@ -330,7 +332,7 @@ lemma_sumBids_nonneg ((_, _) : xs) = lemma_sumBids_nonneg xs
                       ))
 @-}
 {-@ reflect setWB @-}
-{-@ setWB :: m:BalancedMap k -> key:k -> val:{Int | val >= 0} ->
+{-@ setWB :: m:BalancedMap k -> key:k -> val:{Int | InRange val} ->
             {n : BalancedMap k | SetWB_pred n m key val}
 @-}
 setWB :: (Ord k) => BalancedMap k -> k -> Int -> BalancedMap k
@@ -345,7 +347,7 @@ setWB m key val
   | otherwise = addWB m key val
 
 {-@ reflect lemma_getWB_setWB_other @-}
-{-@ lemma_getWB_setWB_other :: m:BalancedMap k -> key:k -> value:{Int | value >= 0}
+{-@ lemma_getWB_setWB_other :: m:BalancedMap k -> key:k -> value:{Int | InRange value}
       -> key':{k | key' /= key && Set_mem key' (keys (mMap m))}
       -> {b:Bool | get (mMap (setWB m key value)) key' == get (mMap m) key'} @-}
 lemma_getWB_setWB_other :: (Ord k) => BalancedMap k -> k -> Int -> k -> Bool
@@ -361,7 +363,7 @@ lemma_getWB_setWB_other (MB xs _) key value key'
 -- ---- Lectura con default 0, como Solidity: leer una clave ausente da 0 ----
 
 {-@ reflect currentBalance @-}
-{-@ currentBalance :: (Ord k) => m:BalancedMap k -> key:k -> {v:Int | v >= 0} @-}
+{-@ currentBalance :: (Ord k) => m:BalancedMap k -> key:k -> {v:Int | InRange v} @-}
 currentBalance :: (Ord k) => BalancedMap k -> k -> Int
 currentBalance m key
   | S.member key (keys (mMap m)) = getWB m key
@@ -378,7 +380,7 @@ lemma_currentBalance_get m key
   | otherwise                    = currentBalance m key == 0
 
 {-@ reflect lemma_currentBalance_setWB_other @-}
-{-@ lemma_currentBalance_setWB_other :: m:BalancedMap k -> key:k -> value:{Int | value >= 0}
+{-@ lemma_currentBalance_setWB_other :: m:BalancedMap k -> key:k -> value:{Int | InRange value}
       -> key':{k | key' /= key}
       -> {b:Bool | currentBalance (setWB m key value) key' == currentBalance m key'} @-}
 lemma_currentBalance_setWB_other :: (Ord k) => BalancedMap k -> k -> Int -> k -> Bool
@@ -388,6 +390,17 @@ lemma_currentBalance_setWB_other m key value key'
       assert (lemma_currentBalance_get m key') $
       currentBalance (setWB m key value) key' == currentBalance m key'
   | otherwise = currentBalance (setWB m key value) key' == currentBalance m key'
+
+-- Igual que el anterior pero sin exigir key' /= key: el traductor lo usa para
+-- toda clave del mismo mapping que lee la funcion, sin saber si son iguales.
+{-@ reflect lemma_currentBalance_setWB_maybe_other @-}
+{-@ lemma_currentBalance_setWB_maybe_other :: m:BalancedMap k -> key:k -> value:{Int | InRange value}
+      -> key':k
+      -> {b:Bool | key' /= key => currentBalance (setWB m key value) key' == currentBalance m key'} @-}
+lemma_currentBalance_setWB_maybe_other :: (Ord k) => BalancedMap k -> k -> Int -> k -> Bool
+lemma_currentBalance_setWB_maybe_other m key value key'
+  | key' /= key = lemma_currentBalance_setWB_other m key value key'
+  | otherwise = True
 
 
 {-@ callSimpleBank :: ctx:SimpleBankState

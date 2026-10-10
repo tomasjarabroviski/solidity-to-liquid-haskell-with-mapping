@@ -10,13 +10,17 @@ const { normalizeVariableName } = require('./gatherState');
  * @param {Object} expr - The AST node representing a Solidity expression.
  * @param {Array<{ name: string, type: string }>} params - An array of function parameter information.
  * @param {Object} stateInfo - An object containing state variable and enum definitions.
+ * @param {Object} [opts]
+ * @param {boolean} [opts.modular] - Translate uint +, -, * as wrapping
+ *   arithmetic (addU/subU/mulU). Used for conditions when overflow checking
+ *   is on; stored values instead use plain arithmetic checked by the Uint type.
  * @returns {string} A string representing the translated Haskell expression.
  * 
  * @example
  * // For a Solidity expression "x + 1":
  * // it might return "x + 1" in Haskell.
  */
-function translateExpression(expr, params, stateInfo) {
+function translateExpression(expr, params, stateInfo, opts = {}) {
   if (!stateInfo) return 'undefined';
   const state_variables = stateInfo.variables || [];
   if (expr.type === 'FunctionCall' && expr.expression.name === 'revert') {
@@ -98,7 +102,7 @@ function translateExpression(expr, params, stateInfo) {
     // Lee con default 0 si la clave no esta, igual que un mapping de Solidity.
     const mapName = resolveMapStateVarName(expr.base, stateInfo);
     if (!mapName) return 'undefined';
-    const indexExpr = translateExpression(expr.index, params, stateInfo);
+    const indexExpr = translateExpression(expr.index, params, stateInfo, opts);
     if (indexExpr === 'undefined') return 'undefined';
     return `(currentBalance (${mapName} st) ${indexExpr})`;
   }
@@ -127,14 +131,18 @@ function translateExpression(expr, params, stateInfo) {
     }
   }
   if (expr.type === 'BinaryOperation') {
-    const left = translateExpression(expr.left, params, stateInfo);
-    const right = translateExpression(expr.right, params, stateInfo);
+    const left = translateExpression(expr.left, params, stateInfo, opts);
+    const right = translateExpression(expr.right, params, stateInfo, opts);
 
+    const wrapping = { '+': 'addU', '-': 'subU', '*': 'mulU' }[expr.operator];
+    if (opts.modular && stateInfo.checkOverflow && wrapping && !isSignedExpression(expr, params, stateInfo)) {
+      return `(${wrapping} ${left} ${right})`;
+    }
     const operator = translateOperator(expr.operator);
     return `(${left} ${operator} ${right})`;
   }
   if (expr.type === 'UnaryOperation') {
-    const subExpression = translateExpression(expr.subExpression, params, stateInfo);
+    const subExpression = translateExpression(expr.subExpression, params, stateInfo, opts);
     return `(${translateOperator(expr.operator)}(${subExpression}))`;
   }
 
@@ -168,9 +176,9 @@ function translateExpression(expr, params, stateInfo) {
   }
 
   if(expr.type === 'Conditional') {
-    const condition = translateExpression(expr.condition, params, stateInfo);
-    const trueExpr = translateExpression(expr.trueExpression, params, stateInfo);
-    const falseExpr = translateExpression(expr.falseExpression, params, stateInfo);
+    const condition = translateExpression(expr.condition, params, stateInfo, opts);
+    const trueExpr = translateExpression(expr.trueExpression, params, stateInfo, opts);
+    const falseExpr = translateExpression(expr.falseExpression, params, stateInfo, opts);
 
     return `if ${condition} then ${trueExpr} else ${falseExpr}`;
   }
@@ -193,10 +201,10 @@ function translateExpression(expr, params, stateInfo) {
  */
 function translateStatement(statement, params, stateInfo, indentLevel = 0) {
   if (statement.type === 'IfStatement') {
-    const condition = translateExpression(statement.condition, params, stateInfo);
-    const trueBody = translateStatements(statement.trueBody.statements, params, stateInfo, indentLevel);
+    const condition = translateExpression(statement.condition, params, stateInfo, { modular: true });
+    const trueBody = translateStatements(blockStatements(statement.trueBody), params, stateInfo, indentLevel);
     const falseBody = statement.falseBody ?
-      translateStatements(statement.falseBody.statements, params, stateInfo, indentLevel) :
+      translateStatements(blockStatements(statement.falseBody), params, stateInfo, indentLevel) :
       'st';
 
     const code = translateIf(condition, trueBody, falseBody, indentLevel);
@@ -224,7 +232,7 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
     }
     // require(...)
     if (expr.type === 'FunctionCall' && expr.expression.name === 'require') {
-      const condition = translateExpression(expr.arguments[0], params, stateInfo);
+      const condition = translateExpression(expr.arguments[0], params, stateInfo, { modular: true });
       // to skip the requiere from the the call
       if (condition === 'undefined') {
         return { code: 'st -- skipped require statement', isLocal: false };
@@ -264,11 +272,14 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
       const rightSide = translateExpression(expr.right, params, stateInfo);
       return { code: `st { ${normalizedLeft} = ${rightSide} }`, isLocal: false };
     }
-    if (expr.type === 'BinaryOperation' && (expr.operator === '+=' || expr.operator === '-=')) {
+    if (expr.type === 'BinaryOperation' && ['+=', '-=', '*=', '/='].includes(expr.operator)) {
       const leftSide = expr.left.name;
       const normalizedLeft = stateInfo.nameMap.get(leftSide) || leftSide;
       const rightSide = translateExpression(expr.right, params, stateInfo);
-      const op = expr.operator === '+=' ? '+' : '-';
+      if (expr.operator === '+=' && stateInfo.checkOverflow && isMsgValue(expr.right)) {
+        return { code: `st { ${normalizedLeft} = (addEther (${normalizedLeft} st) ${rightSide}) }`, isLocal: false };
+      }
+      const op = { '+=': '+', '-=': '-', '*=': '*', '/=': '`div`' }[expr.operator];
       return { code: `st { ${normalizedLeft} = ((${normalizedLeft} st) ${op} ${rightSide}) }`, isLocal: false };
     }
   }
@@ -324,7 +335,12 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
       // no initialization
       return { code: `st -- local var ${varName} (no init)`, isLocal: true };
     }
-    const initialValue = translateExpression(statement.initialValue, params, stateInfo);
+    let initialValue = translateExpression(statement.initialValue, params, stateInfo);
+    // A uint local must hold an in-range value (e.g. `uint res = count - input;`).
+    const isUintLocal = declaration.typeName?.type === 'ElementaryTypeName' && (declaration.typeName.name || '').startsWith('uint');
+    if (stateInfo.checkOverflow && isUintLocal && initialValue !== 'undefined') {
+      return { code: `${varName} = checkU (${initialValue})`, isLocal: true, checkedLocal: varName };
+    }
     if(declaration.typeName.type && declaration.typeName.type === 'UserDefinedTypeName'){
     stateInfo.contractInstances[varName] = declaration.typeName.namePath;
     }
@@ -399,10 +415,29 @@ function translateStatements(statements, params, stateInfo, indentLevel = 0, isV
   let nextStateIndex = 1;
 
   for (let i = 0; i < statements.length; i++) {
-    const { code, isLocal } = translateStatement(statements[i], params, stateInfo, indentLevel);
+    let statement = statements[i];
+    // State-modifying functions return the new state, so a `return` (with
+    // or without a value) just ends the function: anything after it is dead.
+    if (statement.type === 'ReturnStatement') break;
+    // Early return: `if (c) { ...; return; } rest` == `if (c) { ... } else { rest }`.
+    const isEarlyReturn = statement.type === 'IfStatement' && !statement.falseBody &&
+      blockStatements(statement.trueBody).some(s => s.type === 'ReturnStatement');
+    if (isEarlyReturn) {
+      statement = { ...statement, falseBody: { type: 'Block', statements: statements.slice(i + 1) } };
+    }
+    const { code, isLocal, checkedLocal } = translateStatement(statement, params, stateInfo, indentLevel);
     
     if (isLocal) {
-      lines.push(code);
+      // Locals read the state as of their declaration, not the initial one.
+      lines.push(code.replace(/\bst\b/g, currentState));
+      if (checkedLocal) {
+        // GHC drops unused let bindings before Liquid Haskell sees them, so
+        // thread the local through the state to keep its range check.
+        const stNext = `st${nextStateIndex}`;
+        lines.push(`${stNext} = seq ${checkedLocal} ${currentState}`);
+        currentState = stNext;
+        nextStateIndex++;
+      }
     } else {
       const stNext = `st${nextStateIndex}`;
       const replacedCode = code.replace(/\bst\b/g, currentState);
@@ -411,6 +446,7 @@ function translateStatements(statements, params, stateInfo, indentLevel = 0, isV
       currentState = stNext;
       nextStateIndex++;
     }
+    if (isEarlyReturn) break;
   }
 
   const finalState = currentState;
@@ -418,6 +454,13 @@ function translateStatements(statements, params, stateInfo, indentLevel = 0, isV
   return translateLet(lines, finalState, indentLevel);
 }
 
+}
+
+// Statements of an if/else branch, which may be a Block or a single
+// statement (`if (c) return;`).
+function blockStatements(body) {
+  if (!body) return [];
+  return body.type === 'Block' ? body.statements : [body];
 }
 
 // Devuelve '  ' (dos espacios) repetidos `level` veces
@@ -549,6 +592,8 @@ function translateMappingWrite(expr, params, stateInfo, op) {
   let newValueExpr;
   if (op === '=') {
     newValueExpr = rightExpr;
+  } else if (op === '+=' && stateInfo.checkOverflow && isMsgValue(expr.right)) {
+    newValueExpr = `(addEther (currentBalance (${mapName} st) ${indexExpr}) ${rightExpr})`;
   } else if (op === '+=') {
     newValueExpr = `((currentBalance (${mapName} st) ${indexExpr}) + ${rightExpr})`;
   } else {
@@ -557,13 +602,65 @@ function translateMappingWrite(expr, params, stateInfo, op) {
   }
 
   const nextMapVar = `${mapName}Next`;
+  // With upper bounds, later writes need to know that this write didn't
+  // change the other keys the function reads (e.g. `balances[_to]` after
+  // writing `balances[msg.sender]`), not just that they are >= 0.
+  const otherKeys = stateInfo.checkOverflow
+    ? mappingKeysInFunction(expr.left.base.name, params, stateInfo).filter(k => k !== indexExpr)
+    : [];
+  const otherKeyLemmas = otherKeys
+    .map(k => `assert (lemma_currentBalance_setWB_maybe_other (${mapName} st) ${indexExpr} ${newValueExpr} ${k}) $ `)
+    .join('');
   const code =
     `let ${nextMapVar} = setWB (${mapName} st) ${indexExpr} ${newValueExpr} in ` +
     `assert (lemma_currentBalance_get (${mapName} st) ${indexExpr}) $ ` +
     `assert (lemma_currentBalance_get ${nextMapVar} ${indexExpr}) $ ` +
+    otherKeyLemmas +
     `st { ${mapName} = ${nextMapVar} }`;
 
   return { code, isLocal: false };
+}
+
+/**
+ * True if the expression mentions a signed (`int`) parameter or state
+ * variable; wrapping uint arithmetic doesn't apply to those.
+ */
+function isSignedExpression(expr, params, stateInfo) {
+  let signed = false;
+  const visit = node => {
+    if (!node || typeof node !== 'object' || signed) return;
+    if (node.type === 'Identifier') {
+      const param = params.find(p => p.originalName === node.name);
+      const stateVar = (stateInfo.variables || []).find(v => v.originalName === node.name);
+      if ((param || stateVar)?.type === 'Integer') signed = true;
+      return;
+    }
+    Object.values(node).forEach(child => Array.isArray(child) ? child.forEach(visit) : visit(child));
+  };
+  visit(expr);
+  return signed;
+}
+
+function isMsgValue(expr) {
+  return expr.type === 'MemberAccess' && expr.memberName === 'value' && expr.expression.name === 'msg';
+}
+
+/**
+ * Translated keys of every `mapName[key]` in the function being translated
+ * (stateInfo.currentFunctionBody), deduplicated.
+ */
+function mappingKeysInFunction(mapOriginalName, params, stateInfo) {
+  const keys = new Set();
+  const visit = node => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'IndexAccess' && node.base.type === 'Identifier' && node.base.name === mapOriginalName) {
+      const key = translateExpression(node.index, params, stateInfo);
+      if (key !== 'undefined') keys.add(key);
+    }
+    Object.values(node).forEach(child => Array.isArray(child) ? child.forEach(visit) : visit(child));
+  };
+  visit(stateInfo.currentFunctionBody || []);
+  return [...keys];
 }
 
 module.exports = {

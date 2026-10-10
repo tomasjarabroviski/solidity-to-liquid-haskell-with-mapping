@@ -64,7 +64,8 @@ describe('gatherStateDefinitions', () => {
             type: 'uint256',
             originalName: 'Count',
             isMapping: false,
-            mapKeyType: null
+            mapKeyType: null,
+            initialValue: null
         });
     });
 
@@ -158,14 +159,16 @@ describe('gatherStateDefinitions - variable processing', () => {
             type: 'uint256',
             originalName: 'firstVar',
             isMapping: false,
-            mapKeyType: null
+            mapKeyType: null,
+            initialValue: null
         });
         expect(result.variables).toContainEqual({
             name: 'secondVarTestContract',
             type: 'bool',
             originalName: 'SecondVar',
             isMapping: false,
-            mapKeyType: null
+            mapKeyType: null,
+            initialValue: null
         });
         expect(result.nameMap.get('SecondVar')).toBe('secondVarTestContract');
     });

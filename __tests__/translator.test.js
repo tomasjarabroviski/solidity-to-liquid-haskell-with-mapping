@@ -465,3 +465,65 @@ describe('translateStatements', () => {
         expect(translateStatements(statements, [], makeStateInfo(), 0, true)).toBe('9');
     });
 });
+
+describe('overflow checking (stateInfo.checkOverflow)', () => {
+    const id = name => ({ type: 'Identifier', name });
+    const bin = (operator, left, right) => ({ type: 'BinaryOperation', operator, left, right });
+    const uintParam = [{ name: 'amount', originalName: 'amount', type: 'Uint' }];
+    const intParam = [{ name: 'delta', originalName: 'delta', type: 'Integer' }];
+    const overflowStateInfo = () => ({ ...makeStateInfo(), checkOverflow: true });
+
+    test('conditions use wrapping uint arithmetic', () => {
+        const expr = bin('+', id('amount'), { type: 'NumberLiteral', number: '1' });
+        expect(translateExpression(expr, uintParam, overflowStateInfo(), { modular: true })).toBe('(addU amount 1)');
+    });
+
+    test('stored values keep plain arithmetic (checked by the Uint refinement)', () => {
+        const expr = bin('+', id('amount'), { type: 'NumberLiteral', number: '1' });
+        expect(translateExpression(expr, uintParam, overflowStateInfo())).toBe('(amount + 1)');
+    });
+
+    test('signed operands are not wrapped', () => {
+        const expr = bin('-', id('delta'), { type: 'NumberLiteral', number: '1' });
+        expect(translateExpression(expr, intParam, overflowStateInfo(), { modular: true })).toBe('(delta - 1)');
+    });
+
+    test('without checkOverflow conditions are unchanged', () => {
+        const expr = bin('+', id('amount'), { type: 'NumberLiteral', number: '1' });
+        expect(translateExpression(expr, uintParam, makeStateInfo(), { modular: true })).toBe('(amount + 1)');
+    });
+
+    test('require conditions are wrapped', () => {
+        const statement = {
+            type: 'ExpressionStatement',
+            expression: {
+                type: 'FunctionCall',
+                expression: id('require'),
+                arguments: [bin('>=', bin('+', id('amount'), id('amount')), id('amount'))]
+            }
+        };
+        expect(translateStatement(statement, uintParam, overflowStateInfo()).code)
+            .toBe('if ((addU amount amount) >= amount) then st else revert "error"');
+    });
+
+    test('uint locals get a range check', () => {
+        const statement = {
+            type: 'VariableDeclarationStatement',
+            variables: [{ name: 'res', typeName: { type: 'ElementaryTypeName', name: 'uint' } }],
+            initialValue: bin('-', id('owner'), id('amount'))
+        };
+        const result = translateStatement(statement, uintParam, overflowStateInfo());
+        expect(result.code).toBe('res = checkU (((ownerTest st) - amount))');
+        expect(result.checkedLocal).toBe('res');
+    });
+
+    test('crediting msg.value uses the addEther assumption', () => {
+        const msgValue = { type: 'MemberAccess', expression: id('msg'), memberName: 'value' };
+        const statement = {
+            type: 'ExpressionStatement',
+            expression: bin('+=', { type: 'IndexAccess', base: id('balances'), index: id('owner') }, msgValue)
+        };
+        expect(translateStatement(statement, [], overflowStateInfo()).code)
+            .toContain('setWB (balancesTest st) (ownerTest st) (addEther (currentBalance (balancesTest st) (ownerTest st)) (value (msgTest st)))');
+    });
+});

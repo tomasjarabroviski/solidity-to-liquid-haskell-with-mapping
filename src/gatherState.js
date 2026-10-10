@@ -76,13 +76,22 @@ function gatherStateDefinitions(contractNode, contractName) {
             hsType = solidityTypeToHaskellType(variable.typeName, contractName);
           }
           let normalizedName = normalizeVariableName(variable.name + contractName);
+          // A user variable named like a built-in field (e.g. `uint balance`)
+          // shadows it in Solidity: rename the field so the record has no
+          // duplicate, and hide the built-in from identifier lookups.
+          const builtin = vars.find(v => v.name === normalizedName);
+          if (builtin) {
+            normalizedName = normalizeVariableName(variable.name + '_' + contractName);
+            builtin.originalName = '__builtin_' + builtin.originalName;
+          }
           nameMap.set(variable.name, normalizedName);
           vars.push({ 
             name: normalizedName, 
             type: hsType,
             originalName: variable.name,
             isMapping,
-            mapKeyType
+            mapKeyType,
+            initialValue: variable.expression || null
           });
         }
       }
