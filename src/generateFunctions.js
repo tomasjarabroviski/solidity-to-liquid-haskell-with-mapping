@@ -31,6 +31,7 @@ function generateHaskellFunctions(contractName, fnInfo, stateInfo) {
 
   for (let fn of fnInfo.functions) {
     stateInfo.currentFunctionBody = fn.body;
+    stateInfo.currentFunctionPayable = !!fn.isPayable;
     const uniqueParams = fn.params.map(p => ({
       originalName: p.name,
       name: createUniqueParamName(p.name, stateInfo.variables), 
@@ -72,7 +73,9 @@ function generateHaskellFunctions(contractName, fnInfo, stateInfo) {
           const body = translateStatements(fn.body, uniqueParams, stateInfo, 1, true);
           impl = `${fn.name} st${uniqueParams.length ? ' ' + paramNames : ''} = \n  ${body}`;
       } else {
-        impl = `${fn.name} st${uniqueParams.length ? ' ' + paramNames : ''} = ${translateStatements(fn.body, uniqueParams, stateInfo)}`;
+        // A payable function receives msg.value before its body runs.
+        const body = fn.isPayable ? [{ type: 'PayableCredit' }, ...fn.body] : fn.body;
+        impl = `${fn.name} st${uniqueParams.length ? ' ' + paramNames : ''} = ${translateStatements(body, uniqueParams, stateInfo)}`;
       }
     }
 
@@ -91,7 +94,8 @@ function getConstructorAssignments(body, uniqueParams, stateInfo) {
   // Standard assignments
   assignments.push(`msg${stateInfo.contractName} = msgctx`);
   assignments.push(`block${stateInfo.contractName} = block`);
-  assignments.push(`balance${stateInfo.contractName} = 0`);
+  // A payable constructor starts out holding the ether it was deployed with.
+  assignments.push(`balance${stateInfo.contractName} = ${stateInfo.currentFunctionPayable ? 'value msgctx' : '0'}`);
   //generate random number for address.
   assignments.push(`address${stateInfo.contractName} = fromString "${stateInfo.contractName}"`);
 

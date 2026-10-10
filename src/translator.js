@@ -124,6 +124,9 @@ function translateExpression(expr, params, stateInfo, opts = {}) {
     if (expr.expression.name === 'block' && expr.memberName === 'number') {
       return `(number (${"block"+stateInfo.contractName} st))`;
     }
+    if (expr.expression.name === 'block' && expr.memberName === 'timestamp') {
+      return `(timestamp (${"block"+stateInfo.contractName} st))`;
+    }
     // Handle enum member access like StateType.Request
     if (expr.expression.name && expr.memberName) {
       // Return just the member name since in Haskell we defined them directly
@@ -157,16 +160,23 @@ function translateExpression(expr, params, stateInfo, opts = {}) {
     if (paramMap.has(identifierName)) {
       return paramMap.get(identifierName);
     }
+    if (stateInfo.constants && stateInfo.constants.has(identifierName)) {
+      return translateExpression(stateInfo.constants.get(identifierName), params, stateInfo);
+    }
     // Check state variables comparing their names
     const stateVar = state_variables.find(v => v.originalName === identifierName);
     if (stateVar) {
       return `(${stateVar.name} st)`;
     }
+    // `now` is the pre-0.7 alias of block.timestamp.
+    if (identifierName === 'now') {
+      return `(timestamp (${"block"+stateInfo.contractName} st))`;
+    }
 
 
   }
   if (expr.type === 'NumberLiteral') {
-    return expr.number;
+    return applyDenomination(expr.number, expr.subdenomination);
   }
   if (expr.type === 'StringLiteral') {
     return `"${expr.value}"`;
@@ -218,6 +228,12 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
   }
 
 
+  // Synthetic first statement of a payable function (see generateFunctions.js).
+  if (statement.type === 'PayableCredit') {
+    const balance = `balance${stateInfo.contractName}`;
+    return { code: `st { ${balance} = ((${balance} st) + (value (msg${stateInfo.contractName} st))) }`, isLocal: false };
+  }
+
   if (statement.type === 'Block') {
     const blockCode = translateStatements(statement.statements, params, stateInfo, indentLevel);
     return { code: blockCode, isLocal: false };
@@ -243,6 +259,13 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
     if (expr.type === 'FunctionCall' && expr.expression.name === 'assert') {
       // no-op or "if cond then st else revert ..."
       return { code: 'st -- assert statement', isLocal: false };
+    }
+
+    // addr.transfer(x) / addr.send(x): same model as addr.call{value: x}("").
+    if (isEtherTransfer(expr, stateInfo)) {
+      const target = translateExpression(expr.expression.expression, params, stateInfo);
+      const amount = translateExpression(expr.arguments[0], params, stateInfo);
+      return { code: `call${stateInfo.contractName} st (${target}) (${amount})`, isLocal: false };
     }
 
     if(expr.type === 'FunctionCall' && expr.expression.type === 'Identifier'){
@@ -432,9 +455,10 @@ function translateStatements(statements, params, stateInfo, indentLevel = 0, isV
       lines.push(code.replace(/\bst\b/g, currentState));
       if (checkedLocal) {
         // GHC drops unused let bindings before Liquid Haskell sees them, so
-        // thread the local through the state to keep its range check.
+        // use the local to keep its range check. Both branches return the
+        // same state, so Liquid Haskell still knows the state is unchanged.
         const stNext = `st${nextStateIndex}`;
-        lines.push(`${stNext} = seq ${checkedLocal} ${currentState}`);
+        lines.push(`${stNext} = if ${checkedLocal} >= 0 then ${currentState} else ${currentState}`);
         currentState = stNext;
         nextStateIndex++;
       }
@@ -611,10 +635,19 @@ function translateMappingWrite(expr, params, stateInfo, op) {
   const otherKeyLemmas = otherKeys
     .map(k => `assert (lemma_currentBalance_setWB_maybe_other (${mapName} st) ${indexExpr} ${newValueExpr} ${k}) $ `)
     .join('');
+  // For a mapping under the solvency invariant (mBal <= contract balance),
+  // every value the function reads is <= mBal, so it can be sent out.
+  const isLedger = (stateInfo.ledgerMappings || []).some(l => l.name === mapName);
+  const ledgerLemmas = isLedger
+    ? [...new Set([indexExpr, ...mappingKeysInFunction(expr.left.base.name, params, stateInfo)])]
+        .map(k => `assert (lemma_currentBalance_le_mBal (${mapName} st) ${k}) $ `)
+        .join('')
+    : '';
   const code =
     `let ${nextMapVar} = setWB (${mapName} st) ${indexExpr} ${newValueExpr} in ` +
     `assert (lemma_currentBalance_get (${mapName} st) ${indexExpr}) $ ` +
     `assert (lemma_currentBalance_get ${nextMapVar} ${indexExpr}) $ ` +
+    ledgerLemmas +
     otherKeyLemmas +
     `st { ${mapName} = ${nextMapVar} }`;
 
@@ -639,6 +672,33 @@ function isSignedExpression(expr, params, stateInfo) {
   };
   visit(expr);
   return signed;
+}
+
+/**
+ * `<address>.transfer(amount)` / `<address>.send(amount)`. Calls on contract
+ * instances (`token.transfer(to, x)`) take two arguments and are excluded.
+ */
+function isEtherTransfer(expr, stateInfo) {
+  return expr.type === 'FunctionCall' &&
+    expr.expression.type === 'MemberAccess' &&
+    ['transfer', 'send'].includes(expr.expression.memberName) &&
+    (expr.arguments || []).length === 1 &&
+    !(stateInfo.contractInstances && stateInfo.contractInstances[expr.expression.expression.name]);
+}
+
+// Wei per unit (`1 ether`, `2 weeks`, ...).
+const DENOMINATIONS = {
+  wei: 1n, gwei: 10n ** 9n, szabo: 10n ** 12n, finney: 10n ** 15n, ether: 10n ** 18n,
+  seconds: 1n, minutes: 60n, hours: 3600n, days: 86400n, weeks: 604800n, years: 31536000n,
+};
+
+function applyDenomination(number, subdenomination) {
+  const factor = DENOMINATIONS[subdenomination];
+  if (!factor) return number;
+  // Decimals are allowed with units (`0.5 ether`).
+  const [whole, fraction = ''] = number.split('.');
+  const scale = 10n ** BigInt(fraction.length);
+  return ((BigInt(whole + fraction) * factor) / scale).toString();
 }
 
 function isMsgValue(expr) {

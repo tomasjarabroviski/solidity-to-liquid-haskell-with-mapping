@@ -527,3 +527,43 @@ describe('overflow checking (stateInfo.checkOverflow)', () => {
             .toContain('setWB (balancesTest st) (ownerTest st) (addEther (currentBalance (balancesTest st) (ownerTest st)) (value (msgTest st)))');
     });
 });
+
+describe('time, units and ether transfers', () => {
+    const id = name => ({ type: 'Identifier', name });
+
+    test('now and block.timestamp read the block timestamp', () => {
+        const expected = '(timestamp (blockTest st))';
+        expect(translateExpression(id('now'), [], makeStateInfo())).toBe(expected);
+        expect(translateExpression({ type: 'MemberAccess', expression: id('block'), memberName: 'timestamp' }, [], makeStateInfo()))
+            .toBe(expected);
+    });
+
+    test('number units are applied', () => {
+        const lit = (number, subdenomination) => ({ type: 'NumberLiteral', number, subdenomination });
+        expect(translateExpression(lit('1', 'weeks'), [], makeStateInfo())).toBe('604800');
+        expect(translateExpression(lit('1', 'ether'), [], makeStateInfo())).toBe('1000000000000000000');
+        expect(translateExpression(lit('0.5', 'ether'), [], makeStateInfo())).toBe('500000000000000000');
+        expect(translateExpression(lit('7', null), [], makeStateInfo())).toBe('7');
+    });
+
+    test('addr.transfer(x) and addr.send(x) use the call model', () => {
+        const sender = { type: 'MemberAccess', expression: id('msg'), memberName: 'sender' };
+        for (const memberName of ['transfer', 'send']) {
+            const statement = {
+                type: 'ExpressionStatement',
+                expression: {
+                    type: 'FunctionCall',
+                    expression: { type: 'MemberAccess', expression: sender, memberName },
+                    arguments: [{ type: 'NumberLiteral', number: '5' }]
+                }
+            };
+            expect(translateStatement(statement, [], makeStateInfo()).code)
+                .toBe('callTest st ((sender (msgTest st))) (5)');
+        }
+    });
+
+    test('a payable function first credits msg.value to the contract', () => {
+        expect(translateStatement({ type: 'PayableCredit' }, [], makeStateInfo()).code)
+            .toBe('st { balanceTest = ((balanceTest st) + (value (msgTest st))) }');
+    });
+});

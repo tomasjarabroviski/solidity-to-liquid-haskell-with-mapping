@@ -98,6 +98,7 @@ describe('gatherStateDefinitions', () => {
         expect(result).toEqual({
             contractName: 'TestContract',
             contractInstances: {},
+            constants: new Map(),
             variables: [{
                 name: 'msgTestContract',
                 type: 'Message',

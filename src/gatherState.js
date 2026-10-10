@@ -54,9 +54,18 @@ function gatherStateDefinitions(contractNode, contractName) {
     originalName: 'address'
   });
 
+  // Numeric constants (`uint constant PRICE = 1 ether;`) can't change, so
+  // they are inlined as literals instead of being state fields that could
+  // hold any value. Keeps arithmetic with them linear for the SMT solver.
+  let constants = new Map();
+
   for (let subNode of contractNode.subNodes) {
     if (subNode.type === 'StateVariableDeclaration') {
       for (let variable of subNode.variables) {
+        if (variable.name && variable.isDeclaredConst && variable.expression?.type === 'NumberLiteral') {
+          constants.set(variable.name, variable.expression);
+          continue;
+        }
         if (variable.name) {
           let hsType;
           let isMapping = false;
@@ -105,6 +114,7 @@ function gatherStateDefinitions(contractNode, contractName) {
   }
   return {
     contractInstances: {},
+    constants: constants,
     variables: vars, 
     enums: enums,
     nameMap: nameMap,

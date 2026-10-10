@@ -1,0 +1,19 @@
+# Dependencias de npm (se instalan con `npm install`)
+node_modules/
+
+# Salida de `cabal build` en src/verify/ (se regenera en cada máquina)
+dist-newstyle/
+
+# Cache de Liquid Haskell y artefactos de GHC
+.liquid/
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+.ghc.environment.*
+
+# Sistema operativo / editores
+.DS_Store
+
+# Haskell generado por `npm run comp` (se regenera en cada corrida)
+scripts/tmp/

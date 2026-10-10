@@ -76,10 +76,12 @@ data Message = Message {
 @-}
 
 data Block = Block {
-  number :: Uint}
+  number :: Uint,
+  timestamp :: Uint}
 
 {-@ data Block = Block {
-  number :: Uint}
+  number :: Uint,
+  timestamp :: {v:Int | TimeRange v}}
 @-}
 
 {-@ type Amount = {v: Int | v >= 0} @-}
@@ -95,6 +97,7 @@ type Address = Int
 // are mathematical integers (a Haskell Int literal this big would wrap).
 const MAX_UINT = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
 const UINT_MODULUS = '115792089237316195423570985008687907853269984665640564039457584007913129639936';
+const TIMESTAMP_BOUND = '18446744073709551616'; // 2^64
 
 /**
  * Range of a Solidity uint. Without overflow checking only the lower bound is
@@ -104,6 +107,17 @@ function uintRangePredicate(checkOverflow) {
   return checkOverflow
     ? `{-@ predicate InRange V = 0 <= V && V <= ${MAX_UINT} @-}`
     : `{-@ predicate InRange V = V >= 0 @-}`;
+}
+
+/**
+ * Range of block.timestamp / now. With overflow checking it is ASSUMED to be
+ * below 2^64 seconds (~5.8e11 years): otherwise `now + 1 weeks` could
+ * "overflow" and every time-based contract would be reported UNSAFE.
+ */
+function timeRangePredicate(checkOverflow) {
+  return checkOverflow
+    ? `{-@ predicate TimeRange V = 0 <= V && V < ${TIMESTAMP_BOUND} @-}`
+    : `{-@ predicate TimeRange V = V >= 0 @-}`;
 }
 
 /**
@@ -137,7 +151,7 @@ subU a b = a - b
 mulU :: Int -> Int -> Int
 mulU a b = a * b
 
-{-@ checkU :: {v:Int | InRange v} -> Uint @-}
+{-@ checkU :: x:{v:Int | InRange v} -> {v:Uint | v == x} @-}
 checkU :: Int -> Int
 checkU x = x
 
@@ -153,6 +167,7 @@ function msgDefinition(checkOverflow = false) {
   return [
     MSG_DEFINITION,
     uintRangePredicate(checkOverflow),
+    timeRangePredicate(checkOverflow),
     checkOverflow ? OVERFLOW_DEFINITIONS : '',
   ].join('\n');
 }

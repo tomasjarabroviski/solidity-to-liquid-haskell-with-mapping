@@ -367,6 +367,32 @@ lemma_currentBalance_setWB_other m key value key'
       currentBalance (setWB m key value) key' == currentBalance m key'
   | otherwise = currentBalance (setWB m key value) key' == currentBalance m key'
 
+-- Cada valor del mapa es <= la suma total (los valores son no negativos).
+-- Es lo que permite probar que un retiro de balances[k] no supera el ether
+-- del contrato cuando vale la invariante mBal <= balance del contrato.
+{-@ reflect lemma_get_le_sumBids @-}
+{-@ lemma_get_le_sumBids :: m:Map k {v:Int | v >= 0} -> key:{k | Set_mem key (keys m)}
+      -> {b:Bool | get m key <= sumBids m} @-}
+lemma_get_le_sumBids :: Eq k => Map k Int -> k -> Bool
+lemma_get_le_sumBids ((k, _) : xs) key
+  | k == key  = lemma_sumBids_nonneg xs
+  | otherwise = lemma_get_le_sumBids xs key
+lemma_get_le_sumBids [] _ = True  -- caso imposible, pero satisface a GHC
+
+{-@ reflect lemma_currentBalance_le_mBal @-}
+{-@ lemma_currentBalance_le_mBal :: m:BalancedMap k -> key:k
+      -> {b:Bool | currentBalance m key <= mBal m} @-}
+lemma_currentBalance_le_mBal :: (Ord k) => BalancedMap k -> k -> Bool
+lemma_currentBalance_le_mBal m key
+  | S.member key (keys (mMap m)) =
+      assert (lemma_currentBalance_get m key) $
+      assert (lemma_get_le_sumBids (mMap m) key) $
+      True
+  | otherwise =
+      assert (lemma_currentBalance_get m key) $
+      assert (lemma_sumBids_nonneg (mMap m)) $
+      True
+
 -- Igual que el anterior pero sin exigir key' /= key: el traductor lo usa para
 -- toda clave del mismo mapping que lee la funcion, sin saber si son iguales.
 {-@ reflect lemma_currentBalance_setWB_maybe_other @-}

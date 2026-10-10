@@ -93,6 +93,7 @@ function gatherFunctionDefinitions(contractNode, contractName='') {
         body: subNode.body ? subNode.body.statements : [],
         isView,
         isPure: subNode.stateMutability === 'pure',
+        isPayable: subNode.stateMutability === 'payable',
         returnType: hasReturnType ? solidityTypeToHaskellType(returnType, contractName) : null
       });
     }

@@ -13,6 +13,7 @@ const { generateHaskellFunctions, REVERT_FUNCTION } = require('./generateFunctio
 const { msgDefinition } = require('./typeMappings');
 const { LIQUID_ANNOTATIONS } = require('./liquidConditions');
 const { MAP_DEFINITION } = require('./mapDefinitions');
+const { translateExpression } = require('./translator');
 
 /**
  * The main function that receives a string of Solidity code, parses the AST,
@@ -61,6 +62,7 @@ function solidityToHaskell(code, options = {}) {
       const stateInfo = gatherStateDefinitions(node, contractName);
       stateInfo.checkOverflow = checkOverflow;
       const fnInfo = gatherFunctionDefinitions(node, contractName);
+      stateInfo.ledgerMappings = findLedgerMappings(fnInfo, stateInfo);
 
       contracts.push({
         name: contractName,
@@ -108,13 +110,67 @@ function solidityToHaskell(code, options = {}) {
 
 
 
+/**
+ * Mappings that account for received ether, with the price of one unit:
+ *  - `m[k] += msg.value`                                   -> price 1 (wei)
+ *  - `require(msg.value == n * PRICE); ... m[k] += n;`     -> price PRICE
+ * (PRICE must be a numeric literal or constant). They get the solvency
+ * invariant `mBal m * price <= contract balance` (see liquidConditions.js).
+ * A mapping credited with different prices gets no invariant.
+ * @returns {Array<{name: string, price: string}>}
+ */
+function findLedgerMappings(fnInfo, stateInfo) {
+  const prices = new Map(); // mapping name -> Set of prices
+  const isMsgValue = e => e && e.type === 'MemberAccess' && e.memberName === 'value' && e.expression.name === 'msg';
+  const literal = e => {
+    const code = translateExpression(e, [], stateInfo);
+    return /^[0-9]+$/.test(code) ? code : null;
+  };
+  const walk = (node, f) => {
+    if (!node || typeof node !== 'object') return;
+    f(node);
+    Object.values(node).forEach(child => Array.isArray(child) ? child.forEach(c => walk(c, f)) : walk(child, f));
+  };
+
+  for (const fn of fnInfo.functions) {
+    // Unit prices fixed by `require(msg.value == n * PRICE)`: identifier n -> PRICE.
+    const unitPrice = new Map();
+    walk(fn.body, node => {
+      if (node.type !== 'FunctionCall' || node.expression.name !== 'require') return;
+      const cond = node.arguments[0];
+      if (!cond || cond.type !== 'BinaryOperation' || cond.operator !== '==') return;
+      const product = isMsgValue(cond.left) ? cond.right : isMsgValue(cond.right) ? cond.left : null;
+      if (!product || product.type !== 'BinaryOperation' || product.operator !== '*') return;
+      for (const [units, price] of [[product.left, product.right], [product.right, product.left]]) {
+        if (units.type === 'Identifier' && literal(price)) unitPrice.set(units.name, literal(price));
+      }
+    });
+
+    walk(fn.body, node => {
+      if (node.type !== 'BinaryOperation' || node.operator !== '+=' ||
+          node.left.type !== 'IndexAccess' || node.left.base.type !== 'Identifier') return;
+      const mapping = stateInfo.variables.find(v => v.isMapping && v.originalName === node.left.base.name);
+      if (!mapping) return;
+      const price = isMsgValue(node.right) ? '1'
+        : node.right.type === 'Identifier' ? unitPrice.get(node.right.name) : undefined;
+      if (!price) return;
+      if (!prices.has(mapping.name)) prices.set(mapping.name, new Set());
+      prices.get(mapping.name).add(price);
+    });
+  }
+
+  return [...prices]
+    .filter(([, set]) => set.size === 1)
+    .map(([name, set]) => ({ name, price: [...set][0] }));
+}
+
 // TODO: move function to separate file
 function generateCallFunction(moduleName, stateInfo){
   const filteredNames = stateInfo.variables
-  // BalancedMap no deriva Eq, así que se excluye de esta condición de
-  // igualdad estructural igual que 'balance' (además, comparar mappings
-  // grandes con == no aportaría demasiado en esta postcondición).
-  .filter(variable => variable.name !== 'balance' + moduleName && !variable.isMapping)
+  // Todo menos 'balance' queda igual tras la llamada. Incluye los mappings:
+  // en la refinación `==` es igualdad lógica (no necesita instancia Eq), y
+  // hace falta para que la invariante de solvencia sobreviva a un transfer.
+  .filter(variable => variable.name !== 'balance' + moduleName)
   .map(variable => variable.name);
 
   const equalityConditions = filteredNames

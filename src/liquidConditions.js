@@ -70,6 +70,18 @@ function toLogic(expr, params, stateInfo) {
 
 
 /**
+ * Solvency invariant: what a mapping that accounts for received ether (a
+ * "ledger", e.g. `balances[msg.sender] += msg.value`) owes, sum * unit price,
+ * never exceeds the ether the contract holds. See index.js (findLedgerMappings).
+ */
+function solvencyInvariants(stateInfo, stateVar) {
+  return (stateInfo.ledgerMappings || []).map(({ name, price }) => {
+    const owed = price === '1' ? `mBal (${name} ${stateVar})` : `mBal (${name} ${stateVar}) * ${price}`;
+    return `(${owed} <= balance${stateInfo.contractName} ${stateVar})`;
+  });
+}
+
+/**
  * Extracts require conditions from function body
  */
 function extractRequireConditions(body) {
@@ -140,7 +152,7 @@ function generateLiquidAnnotation(contractName, fn, params, stateInfo) {
     annotation = `{-@ ${fn.name+contractName} :: Message -> Block `;
     }
   else{
-    annotation = `{-@ ${fn.name} :: {st:${contractName}State | ${stateConditions.join(' && ') || 'True'}}`;
+    annotation = `{-@ ${fn.name} :: {st:${contractName}State | ${[...solvencyInvariants(stateInfo, 'st'), ...stateConditions].join(' && ') || 'True'}}`;
   }
   // Add parameter conditions 
   params.forEach(param => {
@@ -175,7 +187,10 @@ function generateLiquidAnnotation(contractName, fn, params, stateInfo) {
       returnType = `v:${contractName}State`;
     }
   
-    annotation += ` -> {${returnType} | ${assertConditions.join(' && ') || 'True'}} @-}`;
+    // Functions that return the new state (and the constructor) must keep
+    // the solvency invariant.
+    const postInvariants = (fn.isView || fn.isPure) ? [] : solvencyInvariants(stateInfo, 'v');
+    annotation += ` -> {${returnType} | ${[...postInvariants, ...assertConditions].join(' && ') || 'True'}} @-}`;
   
     return annotation;
 }

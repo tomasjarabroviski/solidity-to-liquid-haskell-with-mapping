@@ -43,6 +43,7 @@ describe('gatherFunctionDefinitions', () => {
             name: 'increment',
             isPure: false,
             isView: false,
+            isPayable: false,
             originalName: 'increment',
             params: [{
                 name: 'x',
