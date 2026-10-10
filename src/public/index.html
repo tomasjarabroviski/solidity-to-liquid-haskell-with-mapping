@@ -335,6 +335,12 @@
             // Validate Liquid can run again.
             disableValidate('Run Convert first');
         });
+
+        // The overflow mode changes the generated Haskell, so the current
+        // output no longer matches the selected mode.
+        document.getElementById('checkOverflow').addEventListener('change', () => {
+            disableValidate('Run Convert first');
+        });
     </script>
 </body>
 </html>
