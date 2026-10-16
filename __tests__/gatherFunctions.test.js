@@ -51,7 +51,8 @@ describe('gatherFunctionDefinitions', () => {
                 originalName: 'x'
             }],
             returnType: null,
-            body: []
+            body: [],
+            hasBody: true
         });
     });
 

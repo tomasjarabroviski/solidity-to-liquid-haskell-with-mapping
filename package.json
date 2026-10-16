@@ -8,6 +8,9 @@
   "main": "index.js",
   "scripts": {
     "comp": "node scripts/compile-all.js",
+    "show": "node scripts/run_contract.js",
+    "verify": "node scripts/verify_contract.js",
+    "bench": "node scripts/run_benchmarks.js",
     "dev": "nodemon",
     "start": "node src/server.js",
     "test": "jest"

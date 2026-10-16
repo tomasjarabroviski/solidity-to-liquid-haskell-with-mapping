@@ -24,9 +24,15 @@ function normalizeIdentifier(name) {
  * @param {Array<Object>} stateVars - An array of state variables with their names.
  * @returns {string} A unique parameter name.
  */
+// Valid Solidity identifiers that are reserved words in Haskell.
+const HASKELL_KEYWORDS = new Set(['case', 'class', 'data', 'default', 'deriving', 'do', 'else', 'foreign',
+  'if', 'import', 'in', 'infix', 'infixl', 'infixr', 'instance', 'let', 'module', 'newtype', 'of',
+  'then', 'type', 'where']);
+
 function createUniqueParamName(baseName, stateVars) {
   const normalized = normalizeIdentifier(baseName);
-  if (stateVars.some(v => v.name.toLowerCase() === normalized.toLowerCase())) {
+  if (HASKELL_KEYWORDS.has(normalized) ||
+      stateVars.some(v => v.name.toLowerCase() === normalized.toLowerCase())) {
     return `_input_${baseName}`;
   }
   return normalized;
@@ -65,7 +71,12 @@ function gatherFunctionDefinitions(contractNode, contractName='') {
     if (subNode.type === 'FunctionDefinition') {
       // Pre-0.5 contracts declare the constructor as a function named like
       // the contract (`function Token(...)`); the parser flags it as such.
-      const originalName = subNode.isConstructor ? 'constructor' : (subNode.name || 'constructor');
+      // `receive()` / `fallback()` (and the unnamed 0.4 `function()`) have no
+      // name either, but they are ordinary entry points, not constructors.
+      const originalName = subNode.isConstructor ? 'constructor'
+        : subNode.isReceiveEther ? 'receive'
+        : subNode.isFallback ? 'fallback'
+        : (subNode.name || 'constructor');
       // `constant` is the pre-0.5 spelling of `view`.
       const isView = subNode.stateMutability === 'view' || subNode.stateMutability === 'constant';
       const normalizedName = normalizeIdentifier(originalName);
@@ -91,6 +102,8 @@ function gatherFunctionDefinitions(contractNode, contractName='') {
         originalName: originalName,
         params: paramInfos,
         body: subNode.body ? subNode.body.statements : [],
+        // Interface/abstract functions have no body; `receive() external payable {}` has an empty one.
+        hasBody: !!subNode.body,
         isView,
         isPure: subNode.stateMutability === 'pure',
         isPayable: subNode.stateMutability === 'payable',

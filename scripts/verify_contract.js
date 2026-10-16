@@ -51,7 +51,10 @@ function verifyContract(file, { keep = false, checkOverflow = false } = {}) {
 
   // Unsupported statements are translated as no-ops (`st -- TODO ...`) and
   // unsupported expressions as `undefined`, so a SAFE here may be vacuous.
-  const ignored = haskell.split('\n').filter(l => /-- TODO|-- skipped|\bundefined\b/.test(l)).length;
+  // A dropped require (e.g. `require(sent)` on a call's result) only allows
+  // more executions, so it can't turn an UNSAFE into a SAFE.
+  const ignored = haskell.split('\n')
+    .filter(l => /-- TODO|-- skipped|\bundefined\b/.test(l) && !/-- skipped require statement/.test(l)).length;
   if (result === 'SAFE' && ignored > 0) result = `SAFE (con ${ignored} sentencias no traducidas)`;
 
   if (!keep) fs.rmSync(dir, { recursive: true, force: true });

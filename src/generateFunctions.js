@@ -62,7 +62,9 @@ function generateHaskellFunctions(contractName, fnInfo, stateInfo) {
     lines.push(generateLiquidAnnotation(contractName, fn, uniqueParams, stateInfo));
     
     let impl;
-    if (fn.body && fn.body.length > 0) {
+    // An empty state-modifying body still needs a binding (it returns the
+    // state, crediting msg.value when payable).
+    if (fn.body && (fn.body.length > 0 || (fn.hasBody && !fn.isView && !fn.isPure))) {
       if (fn.name === 'constructor') {
         const assignments = getConstructorAssignments(fn.body, uniqueParams, stateInfo);
         impl = `${fn.name+stateInfo.contractName} msgctx block ${paramNames} = ${contractName}State

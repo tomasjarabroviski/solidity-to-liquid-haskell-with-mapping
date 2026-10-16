@@ -46,6 +46,13 @@ Un `mapping(K => uint)` se traduce a un `BalancedMap K`: una lista clave-valor q
 | Funciones `payable` | El ether recibido no se contaba | Suman `msg.value` al balance del contrato |
 | Variable de estado llamada `balance` | Campo duplicado | Se renombra |
 | Nombre de contrato con `_` | Liquid Haskell lo rechazaba | Se quitan los `_` |
+| `receive()` / `fallback()` | Se tomaban como constructor (no tienen nombre) | Funciones comunes; si son `payable` suman `msg.value` aunque el cuerpo esté vacío |
+| `unchecked { ... }` (0.8) | Ignorado | Sus sentencias se ejecutan en línea (ningún modo modela el *revert* por overflow de 0.8, ver sección 9) |
+| `payable(addr)` | No compilaba | Es la dirección misma |
+| `selfdestruct(to)` | Ignorado | Envía todo el balance del contrato a `to` |
+| `/` entre `uint` | No compilaba (`/` de Haskell es fraccionaria) | División entera (`div`) |
+| Parámetros con nombre reservado de Haskell (`data`, `type`, ...) | No compilaba | Se renombran |
+| Declaración de tupla con huecos (`(bool ok, ) = ...`) | Crash | Soportada |
 
 ## 4. Modo `--overflow`: detección de desbordamientos
 
@@ -80,6 +87,8 @@ Para probar que un retiro es seguro, hace falta saber que **el contrato tiene el
 | `m[k] += msg.value` | `suma(m) ≤ balance del contrato` |
 | `require(msg.value == n * PRECIO); m[k] += n` (precio constante) | `suma(m) × PRECIO ≤ balance del contrato` |
 
+Antes de cada envío de ether, el traductor agrega además el lema "cada valor del mapping es ≤ su suma". Con la invariante, eso permite probar que se puede pagar lo que dice el mapping **antes** de actualizarlo (el patrón `require(balances[x] >= v); x.call{value: v}(""); balances[x] -= v;`).
+
 Esto detecta errores de contabilidad que antes pasaban:
 - retirar sin poner el balance en 0 (doble retiro);
 - pagar más de lo depositado;
@@ -104,10 +113,70 @@ La tesis evaluó la herramienta con los ejemplos de Azure y chequeó que el cód
 - **En modo `--overflow`**, se detectan todos menos `BECToken.sol`. Ese contrato necesita herencia, librerías, arrays y loops, que siguen sin soporte.
 - En `timelock.sol` y `tokensalechallenge.sol`, los errores que reporta Liquid Haskell caen **exactamente en las líneas que SmartBugs marca como vulnerables**.
 
-### 6.2 Regresión
+### 6.2 Benchmark: Ethernaut
+
+[Ethernaut](https://github.com/OpenZeppelin/ethernaut) es el juego de retos de seguridad de OpenZeppelin: cada nivel es un contrato con una vulnerabilidad que hay que explotar. Se usaron dos niveles (`benchmarks/ethernaut/`, 8 contratos):
+
+- **Nivel 5, Token** (Solidity 0.6), **sin modificar**. Es el mismo bug que `token.sol` de SmartBugs: la guarda `require(balances[msg.sender] - _value >= 0)` siempre es verdadera porque la resta da la vuelta. Además, dos variantes: arreglo solo del saldo y arreglo completo (saldo + overflow del destino).
+- **Nivel 31, Stake** (Solidity 0.8), **solo como variantes**. El original usa un token WETH con llamadas de bajo nivel (`abi.encodeWithSelector`) y un mapping de `bool`, que no están soportados. Se quitaron esas partes y se conservó la lógica de stake/unstake en ether. Una versión correcta y cuatro rotas:
+  - `Unstake` paga sin descontar el stake (retiro múltiple);
+  - paga 1 wei de más;
+  - `Unstake` solo chequea que haya algo de stake, no que alcance;
+  - `StakeWETH` acredita stake sin recibir ether. Este es el bug real del nivel: el original acredita WETH que nunca llega y `Unstake` lo paga en ETH.
+
+  Los cuatro son errores de contabilidad de ether, justo el tipo que apunta a detectar la invariante de solvencia (sección 5.2).
+
+### 6.3 Benchmark: DeFiVulnLabs
+
+[DeFiVulnLabs](https://github.com/SunWeb3Sec/DeFiVulnLabs) es una colección de contratos vulnerables de ejemplo, cada uno con su test de Foundry que reproduce el ataque. Se usaron tres contratos **sin modificar** (salvo quitar el test) y tres variantes (`benchmarks/defivulnlabs/`, 6 contratos):
+
+- **`TimeLock`** (`Overflow.sol`, Solidity 0.7): `lockTime[msg.sender] += _secondsToIncrease` desborda y permite retirar antes de tiempo.
+- **`SimpleBank`** (`self-transfer.sol`, Solidity 0.8): el bug documentado es que transferirse a uno mismo crea fondos. Además resta dentro de `unchecked` sin chequear el saldo.
+- **`FixedSimpleBank`**: la versión "arreglada" del mismo repo. Corrige la auto-transferencia, pero **sigue** restando sin chequear el saldo dentro de `unchecked`: cualquiera puede dejarse un saldo de 2²⁵⁶ − x. La herramienta lo reporta como UNSAFE, es decir, encuentra un bug en el contrato que el propio repo presenta como mitigación.
+- **Variantes** de `FixedSimpleBank`: con chequeo de saldo, con chequeo de saldo y de overflow del destino, y con el chequeo sobre la cuenta equivocada (`_to` en vez de `_from`).
+
+La auto-transferencia de `SimpleBank` **no** es lo que detecta la herramienta: no hay ninguna propiedad que la exprese. El contrato no maneja ether, así que no se genera la invariante de solvencia, y nada exige que la suma de saldos se mantenga constante en una transferencia. La herramienta lo marca UNSAFE por el underflow.
+
+### 6.4 Resultados de Ethernaut y DeFiVulnLabs
+
+Cada contrato declara en su cabecera el resultado esperado en cada modo, porque algunos bugs solo existen con aritmética modular:
+
+| | Contratos | Modo normal | Modo `--overflow` |
+|---|---|---|---|
+| Ethernaut | 8 (1 original + 7 variantes) | **8/8** | **8/8** |
+| DeFiVulnLabs | 6 (3 originales + 3 variantes) | **6/6** | **6/6** |
+
+Los originales en detalle:
+
+| Contrato | Modo normal | Modo `--overflow` | Comentario |
+|---|---|---|---|
+| Ethernaut `Token.sol` | SAFE | UNSAFE | Sin wraparound la guarda `a - b >= 0` sí protege; el bug solo existe con aritmética modular |
+| DeFiVulnLabs `TimeLock.sol` | SAFE | UNSAFE | Overflow de `lockTime`; sin cota superior no hay desborde posible |
+| DeFiVulnLabs `SimpleBank.sol` | UNSAFE | UNSAFE | Underflow dentro de `unchecked` |
+| DeFiVulnLabs `FixedSimpleBank.sol` | UNSAFE | UNSAFE | Ídem: la "mitigación" del repo no cubre el underflow |
+
+Estos dos benchmarks agregan contratos de Solidity 0.6, 0.7 y 0.8, mientras que los de SmartBugs son de 0.4. Para soportarlos hicieron falta las construcciones nuevas de la sección 3 (`receive`, `unchecked`, `payable(addr)`, `selfdestruct`, división entera).
+
+### 6.5 Total
+
+| Benchmark | Contratos | Modo normal | Modo `--overflow` |
+|---|---|---|---|
+| SmartBugs | 44 | 34/44 | 43/44 |
+| Ethernaut | 8 | 8/8 | 8/8 |
+| DeFiVulnLabs | 6 | 6/6 | 6/6 |
+| **Total** | **58** | **48/58** | **57/58** |
+
+Todos los que no coinciden son originales de SmartBugs:
+
+- En modo normal fallan 10: 9 son bugs de overflow, que ese modo no puede ver por diseño (sección 6.1), y el décimo es `BECToken.sol`.
+- En modo `--overflow` falla solo `BECToken.sol`.
+
+`BECToken.sol` da ERROR en los dos modos: el Haskell generado no compila, porque usa construcciones sin soporte.
+
+### 6.6 Regresión
 
 - Los contratos de la tesis (`test_contracts/`, `azure_require/`) dan los mismos resultados que antes en modo normal.
-- Los 43 contratos siguen compilando (`npm run comp`), y los tests unitarios pasaron de 125 a 140.
+- Los 43 contratos siguen compilando (`npm run comp`), y los tests unitarios pasaron de 125 a 148.
 
 ## 7. Errores corregidos del traductor original
 
@@ -129,7 +198,6 @@ La tesis evaluó la herramienta con los ejemplos de Azure y chequeó que el cód
 - **Modo `--overflow`:**
   - no cubre `int` con signo;
   - no puede probar la guarda de multiplicación estilo SafeMath (`c / a == b`);
-  - `/` sobre enteros no está bien traducido.
 - **Invariante de solvencia:** solo se detecta en los dos patrones de la tabla 5.2.
 - **No se verifica:** la lógica temporal (por ejemplo, "no retirar antes de tiempo") ni la reentrancy.
 - **Literales mayores a 2⁶³ en el código** desbordan el `Int` de Haskell.

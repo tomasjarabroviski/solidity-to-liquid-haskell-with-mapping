@@ -66,6 +66,11 @@ function translateExpression(expr, params, stateInfo, opts = {}) {
     const functionName = expr.expression.typeName.namePath;
     return `${'constructor'+functionName} (msg${stateInfo.contractName} st) (block${stateInfo.contractName} st) ${args.map(arg => translateExpression(arg, params, stateInfo)).join(' ')}`;
   }
+  // payable(addr) is just a type conversion on the address.
+  if (expr.type === 'FunctionCall' && expr.expression.type === 'Identifier' && expr.expression.name === 'payable' &&
+      (expr.arguments || []).length === 1) {
+    return translateExpression(expr.arguments[0], params, stateInfo);
+  }
   if(expr.type === 'FunctionCall' && expr.expression.type && expr.expression.type === 'Identifier' && expr.expression.name == 'address'){
     const arg = expr.arguments[0];
     if (arg.name === 'this') {
@@ -265,7 +270,13 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
     if (isEtherTransfer(expr, stateInfo)) {
       const target = translateExpression(expr.expression.expression, params, stateInfo);
       const amount = translateExpression(expr.arguments[0], params, stateInfo);
-      return { code: `call${stateInfo.contractName} st (${target}) (${amount})`, isLocal: false };
+      return { code: `${ledgerLemmasBeforeSend(params, stateInfo)}call${stateInfo.contractName} st (${target}) (${amount})`, isLocal: false };
+    }
+
+    // selfdestruct(to) sends the whole contract balance to `to`.
+    if (expr.type === 'FunctionCall' && expr.expression.name === 'selfdestruct') {
+      const target = translateExpression(expr.arguments[0], params, stateInfo);
+      return { code: `${ledgerLemmasBeforeSend(params, stateInfo)}call${stateInfo.contractName} st (${target}) (balance${stateInfo.contractName} st)`, isLocal: false };
     }
 
     if(expr.type === 'FunctionCall' && expr.expression.type === 'Identifier'){
@@ -342,13 +353,14 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
       }
 
       return {
-        code: `call${stateInfo.contractName} st (${targetAddr}) (${amount})`,
+        code: `${ledgerLemmasBeforeSend(params, stateInfo)}call${stateInfo.contractName} st (${targetAddr}) (${amount})`,
         isLocal: false
       };
     }
   }
   if (statement.type === 'VariableDeclarationStatement') {
-    const declaration = statement.variables[0];
+    // Tuple declarations (`(bool ok, ) = ...`) may leave some slots empty.
+    const declaration = statement.variables.find(v => v);
     const varName = declaration.name;
     
     // Add to local vars tracking
@@ -376,6 +388,10 @@ function translateStatement(statement, params, stateInfo, indentLevel = 0) {
 }
 
 function translateStatements(statements, params, stateInfo, indentLevel = 0, isView = false) {
+  // `unchecked { ... }` (0.8+) only turns off the overflow revert, which
+  // neither mode models, so its statements run inline (keeping its locals
+  // in scope).
+  statements = (statements || []).flatMap(s => s.type === 'UncheckedStatement' ? s.block.statements : [s]);
   if (!statements || statements.length === 0) {
     return isView ? 'False' : `${indent(indentLevel)}st`;
   }
@@ -387,8 +403,8 @@ function translateStatements(statements, params, stateInfo, indentLevel = 0, isV
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
       if (stmt.type === 'VariableDeclarationStatement') {
-        const varName = stmt.variables[0].name;
-        const value = translateExpression(stmt.initialValue, params, stateInfo);
+        const varName = stmt.variables.find(v => v).name;
+        const value = stmt.initialValue ? translateExpression(stmt.initialValue, params, stateInfo) : 'undefined';
         localVars.push(`${varName} = ${value}`);
         // Add to stateInfo.localVars to track local variables
         stateInfo.localVars.add(varName);
@@ -549,7 +565,8 @@ function translateOperator(operator) {
     '+': '+',
     '-': '-',
     '*': '*',
-    '/': '/',
+    // uint division truncates, like Haskell's `div` (`/` needs Fractional).
+    '/': '`div`',
     
     // Logical operators
     '&&': '&&',
@@ -709,6 +726,20 @@ function isMsgValue(expr) {
  * Translated keys of every `mapName[key]` in the function being translated
  * (stateInfo.currentFunctionBody), deduplicated.
  */
+/**
+ * Before sending ether: every ledger value the function reads is <= mBal <=
+ * contract balance, so it can be sent even before the ledger is updated
+ * (e.g. `require(balances[msg.sender] >= x); msg.sender.call{value: x}("")`).
+ */
+function ledgerLemmasBeforeSend(params, stateInfo) {
+  return (stateInfo.ledgerMappings || []).flatMap(({ name }) => {
+    const mapVar = (stateInfo.variables || []).find(v => v.name === name);
+    if (!mapVar) return [];
+    return mappingKeysInFunction(mapVar.originalName, params, stateInfo)
+      .map(k => `assert (lemma_currentBalance_le_mBal (${name} st) ${k}) $ `);
+  }).join('');
+}
+
 function mappingKeysInFunction(mapOriginalName, params, stateInfo) {
   const keys = new Set();
   const visit = node => {

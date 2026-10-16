@@ -125,15 +125,82 @@ Then open `http://localhost:3000` in your browser.
 
 #### Command Line Tools
 
-Run a single contract:
+All scripts live in `scripts/` and are run from the repository root. Each one has an npm
+alias; `npm run <alias> -- <args>` is equivalent to `node scripts/<script>.js <args>`
+(the `--` is needed so npm passes the arguments through to the script).
+
+| Alias | Script | What it does |
+|---|---|---|
+| `npm run show` | `run_contract.js` | Prints a contract from `test_contracts/` and its generated Haskell (no compilation or verification). |
+| `npm run verify` | `verify_contract.js` | Translates one or more `.sol` files and runs real Liquid Haskell verification. |
+| `npm run bench` | `run_benchmarks.js` | Verifies every contract under `benchmarks/` and compares against the expected result. |
+| `npm run comp` | `compile-all.js` | Translates every contract in `test_contracts/` and checks the output compiles with plain `ghc` (see [Testing](#testing)). |
+
+`verify` and `bench` need the `src/verify/` project to be built (see Installation).
+
+##### Show a translation (`run_contract.js`)
+
+Takes the contract name from `test_contracts/`, without the `.sol` extension:
 
 ```bash
-node scripts/run_contract.js <contract-name>
+npm run show -- test18_simple_marketplace
+# or: node scripts/run_contract.js test18_simple_marketplace
 ```
+
+##### Verify contracts (`verify_contract.js`)
+
+Accepts any `.sol` path (one or several). It runs the same command as the web interface
+(`cabal exec -- ghc -fplugin=LiquidHaskell -fno-code`) and prints one result per file:
+
+- `SAFE` / `UNSAFE` — Liquid Haskell's verdict.
+- `SAFE (con N sentencias no traducidas)` — SAFE, but N statements/expressions were not
+  translated (emitted as `TODO` or `undefined`), so the result may be vacuous.
+- `ERROR` — the generated Haskell does not compile (unlike the web UI, this is not reported as UNSAFE).
+- `PARSE ERROR` / `TRANSLATOR CRASH` — the Solidity parser or the translator failed.
+
+```bash
+npm run verify -- benchmarks/ethernaut/original/Token.sol
+npm run verify -- a.sol b.sol --overflow
+VERBOSE=1 npm run verify -- Token.sol
+```
+
+Flags:
+
+- `--overflow` — model `uint` arithmetic modulo 2^256 and check for overflow/underflow.
+  Without it, integers are mathematical (no wraparound).
+- `--keep` — keep the generated `.hs` file and print its path.
+- `VERBOSE=1` (environment variable) — print Liquid Haskell's output when the result is not `SAFE`.
+
+##### Run the benchmarks (`run_benchmarks.js`)
+
+Recursively verifies every `.sol` under `benchmarks/` (or the directory passed as argument)
+and prints `OK`/`FAIL` per file plus a summary (`X/Y coinciden con lo esperado`). It is slow:
+it runs Liquid Haskell once per file.
+
+```bash
+npm run bench
+npm run bench -- --overflow
+npm run bench -- benchmarks/ethernaut
+npm run bench -- benchmarks/smartbugs --overflow
+```
+
+The expected result for each file is read from a comment in the contract:
+
+- `// Esperado: SAFE|UNSAFE` — expected result in the default mode.
+- `// Esperado con --overflow: SAFE|UNSAFE` — expected result with `--overflow`; takes
+  precedence over the previous one in that mode.
+- A file under an `original/` folder with no comment is expected to be `UNSAFE`
+  (SmartBugs ground truth: all those contracts are vulnerable).
+
+The same contract can be expected `SAFE` in one mode and `UNSAFE` in the other. For example,
+Ethernaut's `Token.sol` guards with `require(balances[msg.sender] - _value >= 0)`, which only
+protects if subtraction doesn't wrap around: it verifies without `--overflow` but is `UNSAFE` with it.
 
 ## Testing
 
-For converting all smart contracts and checking that ghc parses them in the test_contracts folder:
+For converting all smart contracts in `test_contracts/` and checking that the generated code
+compiles with `ghc -fno-code` (generated files go to `scripts/tmp/`). This only typechecks
+the Haskell; it does **not** run Liquid Haskell verification (use `npm run verify` for that):
 
 ```bash
 npm run comp
