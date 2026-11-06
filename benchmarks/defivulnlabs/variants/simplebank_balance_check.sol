@@ -1,6 +1,6 @@
-// Variante de DeFiVulnLabs FixedSimpleBank: ademas chequea que alcance el saldo antes de restar.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE (_toBalance + _amount puede dar la vuelta dentro de unchecked)
+// Variant of DeFiVulnLabs FixedSimpleBank: also checks that the balance is enough before subtracting.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE (_toBalance + _amount can wrap around inside unchecked)
 pragma solidity ^0.8.18;
 
 contract SimpleBank {

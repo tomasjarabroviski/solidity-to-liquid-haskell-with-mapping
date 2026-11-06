@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/tokensalechallenge.sol. Roto: sell paga un token de mas.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/tokensalechallenge.sol. Broken: sell pays one extra token.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.21;
 
 contract TokenSaleChallenge {

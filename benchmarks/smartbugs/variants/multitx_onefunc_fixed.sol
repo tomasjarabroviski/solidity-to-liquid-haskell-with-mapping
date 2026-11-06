@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_multitx_onefunc_feasible.sol con el chequeo agregado.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/integer_overflow_multitx_onefunc_feasible.sol with the check added.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.23;
 
 contract IntegerOverflowMultiTxOneFuncFeasible {

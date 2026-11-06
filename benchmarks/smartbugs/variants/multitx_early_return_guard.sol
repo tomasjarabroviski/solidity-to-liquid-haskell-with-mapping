@@ -1,7 +1,7 @@
-// Variante de SmartBugs arithmetic/integer_overflow_multitx_multifunc_feasible.sol:
-// el early return protege la resta (prueba que el `return` corta el flujo).
-// Esperado con --overflow: SAFE
-// Esperado: SAFE
+// Variant of SmartBugs arithmetic/integer_overflow_multitx_multifunc_feasible.sol:
+// the early return guards the subtraction (tests that `return` ends the control flow).
+// Expected with --overflow: SAFE
+// Expected: SAFE
 pragma solidity ^0.4.23;
 
 contract IntegerOverflowMultiTxMultiFuncFeasible {

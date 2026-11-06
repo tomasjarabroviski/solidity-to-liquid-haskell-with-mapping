@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/timelock.sol. Roto: transfiere mas de lo que tiene depositado.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/timelock.sol. Broken: transfers more than was deposited.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.10;
 
 contract TimeLock {

@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: valida solo que _value sea positivo.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: only checks that _value is positive.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

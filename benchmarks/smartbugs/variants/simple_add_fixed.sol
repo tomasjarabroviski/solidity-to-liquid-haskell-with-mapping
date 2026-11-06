@@ -1,7 +1,7 @@
-// Variante de SmartBugs arithmetic/overflow_simple_add.sol con la guarda de overflow
-// (ademas prueba una variable de estado propia llamada `balance`).
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/overflow_simple_add.sol with the overflow guard
+// (also tests a user state variable named `balance`).
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity 0.4.25;
 
 contract Overflow_Add {

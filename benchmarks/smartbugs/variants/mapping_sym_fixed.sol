@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_mapping_sym_1.sol con el chequeo agregado.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/integer_overflow_mapping_sym_1.sol with the check added.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.11;
 
 contract IntegerOverflowMappingSym1 {

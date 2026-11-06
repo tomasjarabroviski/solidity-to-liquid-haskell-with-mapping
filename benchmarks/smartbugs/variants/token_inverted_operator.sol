@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: operador invertido (<= en vez de >=).
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: inverted operator (<= instead of >=).
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

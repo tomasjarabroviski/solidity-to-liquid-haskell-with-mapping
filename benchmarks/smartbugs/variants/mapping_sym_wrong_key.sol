@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_mapping_sym_1.sol chequeando la clave equivocada.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/integer_overflow_mapping_sym_1.sol checking the wrong key.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.11;
 
 contract IntegerOverflowMappingSym1 {

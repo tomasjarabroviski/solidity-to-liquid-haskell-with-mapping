@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/timelock.sol. Roto: la guarda de overflow mira balances en vez de lockTime.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/timelock.sol. Broken: the overflow guard checks balances instead of lockTime.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.10;
 
 contract TimeLock {

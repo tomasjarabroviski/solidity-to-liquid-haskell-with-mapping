@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: valida el balance de _to en vez de msg.sender.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: checks the balance of _to instead of msg.sender.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/tokensalechallenge.sol. Arreglo: acota numTokens para que numTokens * PRICE_PER_TOKEN no desborde.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/tokensalechallenge.sol. Fixed: bounds numTokens so that numTokens * PRICE_PER_TOKEN does not overflow.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.21;
 
 contract TokenSaleChallenge {

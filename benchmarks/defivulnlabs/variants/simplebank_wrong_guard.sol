@@ -1,6 +1,6 @@
-// Variante de DeFiVulnLabs FixedSimpleBank: chequea el saldo de la cuenta equivocada (_to en vez de _from).
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of DeFiVulnLabs FixedSimpleBank: checks the balance of the wrong account (_to instead of _from).
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.8.18;
 
 contract SimpleBank {

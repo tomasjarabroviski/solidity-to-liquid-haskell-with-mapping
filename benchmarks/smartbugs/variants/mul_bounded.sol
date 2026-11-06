@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_mul.sol acotando los factores.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/integer_overflow_mul.sol bounding the factors.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.19;
 
 contract IntegerOverflowMul {

@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_minimal.sol con un chequeo equivocado.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/integer_overflow_minimal.sol with a wrong check.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.19;
 
 contract IntegerOverflowMinimal {

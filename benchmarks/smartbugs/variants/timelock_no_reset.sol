@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/timelock.sol. Roto: no pone el balance en 0 antes de transferir (se puede retirar dos veces).
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/timelock.sol. Broken: does not reset the balance to 0 before transferring (it can be withdrawn twice).
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.10;
 
 contract TimeLock {

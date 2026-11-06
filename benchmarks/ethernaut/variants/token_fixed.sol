@@ -1,6 +1,6 @@
-// Variante de Ethernaut Token.sol. Arreglo: chequea el balance antes de restar.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE (balances[_to] += _value puede desbordar en 0.6)
+// Variant of Ethernaut Token.sol. Fixed: checks the balance before subtracting.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE (balances[_to] += _value can overflow in 0.6)
 pragma solidity ^0.6.0;
 
 contract Token {

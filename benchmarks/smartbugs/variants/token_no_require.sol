@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: sin require.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: no require.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

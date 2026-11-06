@@ -1,6 +1,6 @@
-// Variante de DeFiVulnLabs FixedSimpleBank: chequea saldo suficiente y que el destino no desborde.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of DeFiVulnLabs FixedSimpleBank: checks for enough balance and that the recipient does not overflow.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.8.18;
 
 contract SimpleBank {

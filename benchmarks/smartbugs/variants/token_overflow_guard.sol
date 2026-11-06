@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Arreglo completo: chequea balance suficiente y que el destino no desborde (guarda clasica pre-SafeMath).
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/token.sol. Full fix: checks for enough balance and that the recipient does not overflow (classic pre-SafeMath guard).
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.18;
 
 contract Token {

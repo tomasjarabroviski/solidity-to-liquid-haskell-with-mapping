@@ -1,7 +1,7 @@
-// Extraido de SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/Overflow.sol, contrato TimeLock, sin modificar.
-// Bug: lockTime[msg.sender] += _secondsToIncrease desborda (Solidity 0.7) y permite retirar antes de tiempo.
-// Esperado: SAFE (sin --overflow no hay desborde posible)
-// Esperado con --overflow: UNSAFE
+// Taken from SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/Overflow.sol, contract TimeLock, unmodified.
+// Bug: lockTime[msg.sender] += _secondsToIncrease overflows (Solidity 0.7) and allows withdrawing early.
+// Expected: SAFE (without --overflow no overflow is possible)
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.7.6;
 
 contract TimeLock {

@@ -1,7 +1,7 @@
-// Extraido de SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/self-transfer.sol, contrato SimpleBank, sin modificar (solo se quito el test de Foundry).
-// Bug documentado: transferir a uno mismo crea fondos. Ademas, dentro de unchecked la resta no chequea el saldo (underflow), que es lo que detecta la herramienta.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Taken from SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/self-transfer.sol, contract SimpleBank, unmodified (only the Foundry test was removed).
+// Documented bug: transferring to oneself creates funds. Also, inside unchecked the subtraction does not check the balance (underflow), which is what the tool detects.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.8.18;
 
 contract SimpleBank {

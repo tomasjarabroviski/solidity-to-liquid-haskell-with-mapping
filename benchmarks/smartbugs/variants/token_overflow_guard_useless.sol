@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: la 'guarda' solo pide que la suma sea positiva, no detecta el desborde.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: the 'guard' only requires the sum to be positive, it does not detect the overflow.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

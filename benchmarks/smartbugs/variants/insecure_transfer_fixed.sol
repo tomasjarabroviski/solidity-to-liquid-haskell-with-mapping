@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/insecure_transfer.sol con la guarda de overflow.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/insecure_transfer.sol with the overflow guard.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.10;
 
 contract IntegerOverflowAdd {

@@ -1,7 +1,7 @@
-// Ethernaut nivel 5 "Token" (OpenZeppelin/ethernaut, contracts/src/levels/Token.sol, commit d05643a), sin modificar salvo esta cabecera.
-// Bug: require(balances[msg.sender] - _value >= 0) siempre es verdadero en Solidity < 0.8 (la resta da la vuelta), asi que cualquiera transfiere mas de lo que tiene.
-// Esperado: SAFE (sin --overflow la resta es matematica y la guarda si protege)
-// Esperado con --overflow: UNSAFE
+// Ethernaut level 5 "Token" (OpenZeppelin/ethernaut, contracts/src/levels/Token.sol, commit d05643a), unmodified except for this header.
+// Bug: require(balances[msg.sender] - _value >= 0) is always true in Solidity < 0.8 (the subtraction wraps around), so anyone can transfer more than they have.
+// Expected: SAFE (without --overflow the subtraction is mathematical and the guard does protect)
+// Expected with --overflow: UNSAFE
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.0;
 

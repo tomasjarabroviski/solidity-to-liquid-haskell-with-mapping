@@ -1,7 +1,7 @@
-// Extraido de SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/self-transfer.sol, contrato FixedSimpleBank (la version "arreglada" del repo), sin modificar.
-// Arregla la auto-transferencia, pero sigue restando sin chequear el saldo dentro de unchecked: cualquiera puede dejar un saldo en 2^256 - x.
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Taken from SunWeb3Sec/DeFiVulnLabs (commit f61f6ee), src/test/self-transfer.sol, contract FixedSimpleBank (the repo's "fixed" version), unmodified.
+// Fixes the self-transfer, but still subtracts without checking the balance inside unchecked: anyone can leave a balance at 2^256 - x.
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.8.18;
 
 contract FixedSimpleBank {

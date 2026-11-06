@@ -1,6 +1,6 @@
-// Variante de Ethernaut Token.sol. Arreglo completo: chequea balance suficiente y que el destino no desborde.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of Ethernaut Token.sol. Full fix: checks for enough balance and that the recipient does not overflow.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.6.0;
 
 contract Token {

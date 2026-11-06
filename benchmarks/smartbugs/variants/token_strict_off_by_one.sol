@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Arreglo alternativo: > en vez de >= (mas restrictivo, sigue siendo seguro).
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE (balances[_to] += _value puede desbordar, igual que insecure_transfer.sol)
+// Variant of SmartBugs arithmetic/token.sol. Alternative fix: > instead of >= (stricter, still safe).
+// Expected: SAFE
+// Expected with --overflow: UNSAFE (balances[_to] += _value can overflow, as in insecure_transfer.sol)
 pragma solidity ^0.4.18;
 
 contract Token {

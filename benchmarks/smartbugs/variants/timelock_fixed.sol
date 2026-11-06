@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/timelock.sol. Arreglo: guarda de overflow al extender el bloqueo.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of SmartBugs arithmetic/timelock.sol. Fixed: overflow guard when extending the lock.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.4.10;
 
 contract TimeLock {

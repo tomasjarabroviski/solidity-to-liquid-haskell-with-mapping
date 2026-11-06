@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/tokensalechallenge.sol. Roto: sell paga el doble de lo que se cobro en buy (el contrato queda insolvente).
-// Esperado: UNSAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/tokensalechallenge.sol. Broken: sell pays twice what buy charged (the contract becomes insolvent).
+// Expected: UNSAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.21;
 
 contract TokenSaleChallenge {

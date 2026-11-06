@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/tokensalechallenge.sol. Roto: tiene la guarda del balance pero no acota la multiplicacion (el exploit original).
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/tokensalechallenge.sol. Broken: has the balance guard but does not bound the multiplication (the original exploit).
+// Expected: SAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.21;
 
 contract TokenSaleChallenge {

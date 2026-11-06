@@ -1,7 +1,7 @@
-// Variante de Ethernaut nivel 31 "Stake" (Solidity 0.8). Se quitaron WETH (llamadas de bajo nivel con bytes/abi), el mapping Stakers (bool) y totalStaked, que no estan soportados o no intervienen en el bug.
-// Arreglo: solo se acredita stake por el ether recibido, y Unstake resta antes de pagar.
-// Esperado: SAFE
-// Esperado con --overflow: SAFE
+// Variant of Ethernaut level 31 "Stake" (Solidity 0.8). WETH (low-level calls with bytes/abi), the Stakers (bool) mapping and totalStaked were removed, since they are unsupported or play no part in the bug.
+// Fixed: stake is only credited for the ether received, and Unstake subtracts before paying.
+// Expected: SAFE
+// Expected with --overflow: SAFE
 pragma solidity ^0.8.0;
 
 contract Stake {

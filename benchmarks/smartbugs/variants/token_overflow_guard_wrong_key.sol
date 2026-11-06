@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/token.sol. Roto: la guarda de overflow mira a msg.sender en vez de _to.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/token.sol. Broken: the overflow guard checks msg.sender instead of _to.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.18;
 
 contract Token {

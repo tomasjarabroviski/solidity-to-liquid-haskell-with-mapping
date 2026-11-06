@@ -1,6 +1,6 @@
-// Variante de SmartBugs arithmetic/integer_overflow_add.sol con una guarda que no sirve.
-// Esperado: SAFE
-// Esperado con --overflow: UNSAFE
+// Variant of SmartBugs arithmetic/integer_overflow_add.sol with a guard that does not help.
+// Expected: SAFE
+// Expected with --overflow: UNSAFE
 pragma solidity ^0.4.19;
 
 contract IntegerOverflowAdd {
