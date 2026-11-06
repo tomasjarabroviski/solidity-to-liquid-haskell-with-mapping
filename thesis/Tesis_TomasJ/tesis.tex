@@ -1,0 +1,94 @@
+\documentclass[11pt,a4paper,twoside]{tesis}
+% SI NO PENSAS IMPRIMIRLO EN FORMATO LIBRO PODES USAR
+%\documentclass[11pt,a4paper]{tesis}
+
+\usepackage{graphicx}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[spanish,es-tabla,es-nodecimaldot]{babel}
+\usepackage[left=3cm,right=3cm,bottom=3.5cm,top=3.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{listings}
+
+%%%% LISTADOS DE CÓDIGO (Solidity y Haskell)
+
+\lstdefinelanguage{Solidity}{
+  morekeywords={contract, mapping, function, public, private, internal, external,
+    constructor, require, assert, revert, return, returns, if, else, uint, int,
+    address, bool, string, payable, view, pure, memory, pragma, solidity, enum,
+    struct, msg, true, false},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+}
+
+% Las anotaciones de Liquid Haskell ({-@ ... @-}) no se muestran como comentarios.
+\lstdefinelanguage{LHaskell}[]{Haskell}{deletecomment=[n]{\{-}{-\}}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{gray},
+  stringstyle=\color{black!70},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  frame=lines,
+  framesep=4pt,
+  xleftmargin=1em,
+  aboveskip=1em,
+  belowskip=1em,
+  captionpos=b,
+}
+\renewcommand{\lstlistingname}{Listado}
+
+\begin{document}
+
+%%%% CARATULA
+
+\def\autor{Tomás Jarabroviski}
+\def\tituloTesis{Liquid Types para la verificación de \vspace{.2cm} \\ \emph{smart contracts} con diccionarios}
+\def\runtitulo{Liquid Types para la verificación de smart contracts con diccionarios}
+\def\runtitle{Liquid Types for the verification of smart contracts with dictionaries}
+\def\director{Dr. Hernán Melgratti}
+% Sin codirector: no definir \codirector.
+\def\lugar{Buenos Aires, 2026}
+\input{caratula}
+
+%%%% ABSTRACTS, AGRADECIMIENTOS Y DEDICATORIA
+% TODO: todavía tienen el texto de ejemplo de la plantilla; se escriben al final.
+\frontmatter
+\pagestyle{empty}
+%\input{abs_esp.tex}
+
+%\cleardoublepage
+%\input{abs_en.tex} % OPCIONAL: comentar si no se quiere
+
+%\cleardoublepage
+%\input{agradecimientos.tex} % OPCIONAL: comentar si no se quiere
+
+%\cleardoublepage
+%\input{dedicatoria.tex}  % OPCIONAL: comentar si no se quiere
+
+\cleardoublepage
+\tableofcontents
+
+\mainmatter
+\pagestyle{headings}
+
+%%%% ACA VA EL CONTENIDO DE LA TESIS
+
+\input{cap_mappings}
+
+%%%% BIBLIOGRAFIA
+\backmatter
+% TODO: quitar \nocite{*} cuando todas las referencias estén citadas en el texto.
+\nocite{*}
+\bibliographystyle{alpha}
+\bibliography{tesis}
+
+\end{document}
