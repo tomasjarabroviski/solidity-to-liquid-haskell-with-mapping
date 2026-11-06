@@ -2,9 +2,9 @@
 
 /**
  * @file compile-all.js
- * @description Iterates over all .sol contracts in `test_contracts`,
- *              generates Haskell code, and tries to compile each
- *              generated .hs file using `ghc`.
+ * @description Translates every .sol contract in test_contracts/ and checks
+ *   that the generated Haskell compiles with plain `ghc -fno-code` (output in
+ *   scripts/tmp/). This only typechecks; it does not run Liquid Haskell.
  */
 
 const fs = require('fs');
@@ -13,8 +13,7 @@ const { execSync } = require('child_process');
 const { solidityToHaskell } = require('../src/index');
 
 const CONTRACTS_DIR = path.join(__dirname, '../test_contracts');
-
-const OUTPUT_DIR = path.join(__dirname, '/tmp/');
+const OUTPUT_DIR = path.join(__dirname, 'tmp');
 
 if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR);

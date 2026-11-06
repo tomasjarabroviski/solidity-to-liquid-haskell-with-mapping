@@ -1,42 +1,45 @@
 /**
  * @file index.js
- * @description The main entry point that exports a single function `solidityToHaskell`.
- *              This function parses the Solidity code into an AST, gathers relevant information,
- *              and generates Haskell code for each contract found.
+ * @description Entry point of the translator. Exports `solidityToHaskell`,
+ *   which parses Solidity source code and emits a single, self-contained
+ *   Liquid Haskell module covering every contract found in it.
  */
 
 const parser = require('@solidity-parser/parser');
 const { gatherStateDefinitions } = require('./gatherState');
 const { gatherFunctionDefinitions } = require('./gatherFunctions');
 const { generateHaskellData } = require('./generateData');
-const { generateHaskellFunctions, REVERT_FUNCTION } = require('./generateFunctions');
+const { generateHaskellFunctions, generateCallFunction, REVERT_FUNCTION } = require('./generateFunctions');
 const { msgDefinition } = require('./typeMappings');
 const { LIQUID_ANNOTATIONS } = require('./liquidConditions');
 const { MAP_DEFINITION } = require('./mapDefinitions');
 const { translateExpression } = require('./translator');
+const { walkAst, isMsgValue } = require('./astUtils');
 
 /**
- * The main function that receives a string of Solidity code, parses the AST,
- * and generates a Haskell module for each contract found.
- * 
+ * Translates Solidity source code into a Liquid Haskell module.
+ *
+ * The output is laid out as:
+ *   1. Liquid Haskell pragmas and the `module` header (named after the first contract).
+ *   2. The shared prelude: `Message`, `Block`, numeric types and `revert`.
+ *   3. The Map/MapWithBalance library, only if some contract uses a mapping.
+ *   4. For each contract: its `call<Name>` ether-transfer model, its state
+ *      record and enums, and one Haskell function per Solidity function.
+ *
  * @function solidityToHaskell
- * @param {string} code - A string containing the Solidity source code to be translated.
+ * @param {string} code - Solidity source code.
  * @param {Object} [options]
  * @param {boolean} [options.checkOverflow=false] - Bound uint by 2^256-1 so
  *   overflows are reported, and evaluate conditions with wrapping arithmetic.
- * @returns {string} A string containing all the generated Haskell code, separated into modules for each contract.
- * 
+ * @returns {string} The generated Haskell code, or '' if the source does not parse.
+ *
  * @example
- * const solidityCode = `
+ * const haskell = solidityToHaskell(`
  *   contract Counter {
  *     uint256 public count;
- *     function increment(uint x) public {
- *       count = count + x;
- *     }
+ *     function increment(uint x) public { count = count + x; }
  *   }
- * `;
- * const haskellResult = solidityToHaskell(solidityCode);
- * console.log(haskellResult);
+ * `);
  */
 function solidityToHaskell(code, options = {}) {
   const checkOverflow = !!options.checkOverflow;
@@ -48,12 +51,9 @@ function solidityToHaskell(code, options = {}) {
     return '';
   }
 
-  // Track contracts and their dependencies
-  let contracts = [];
-  let moduleWritten = false;
-  let haskellOutput = [];
+  const contracts = [];
 
-  // First pass: Gather all contracts
+  // First pass: gather the state and functions of every contract.
   parser.visit(ast, {
     ContractDefinition(node) {
       // Liquid Haskell's spec parser rejects `_` in type constructor names
@@ -78,26 +78,21 @@ function solidityToHaskell(code, options = {}) {
     c => (c.stateInfo.variables || []).some(v => v.isMapping)
   );
 
-  // Write shared module header once
-  if (!moduleWritten) {
-    // Determine main module name from first contract
-    const mainModule = contracts[0]?.name || 'Main';
-    haskellOutput.push(LIQUID_ANNOTATIONS);
-    haskellOutput.push(`module ${mainModule} where\n`);
-    if (usesMappings) {
-      haskellOutput.push('import qualified Data.Set as S');
-    }
-    haskellOutput.push(msgDefinition(checkOverflow));
-    haskellOutput.push(REVERT_FUNCTION);
-    if (usesMappings) {
-      haskellOutput.push(MAP_DEFINITION);
-    }
-    moduleWritten = true;
+  // Shared module header, named after the first contract.
+  const haskellOutput = [];
+  haskellOutput.push(LIQUID_ANNOTATIONS);
+  haskellOutput.push(`module ${contracts[0]?.name || 'Main'} where\n`);
+  if (usesMappings) {
+    haskellOutput.push('import qualified Data.Set as S');
   }
-  
-  // Generate code for all contracts
+  haskellOutput.push(msgDefinition(checkOverflow));
+  haskellOutput.push(REVERT_FUNCTION);
+  if (usesMappings) {
+    haskellOutput.push(MAP_DEFINITION);
+  }
+
+  // Second pass: generate the data types and functions of every contract.
   for (const contract of contracts) {
-    // Generate data types and functions
     haskellOutput.push(generateCallFunction(contract.name, contract.stateInfo));
     haskellOutput.push(generateHaskellData(contract.name, contract.stateInfo));
     haskellOutput.push('');
@@ -108,34 +103,31 @@ function solidityToHaskell(code, options = {}) {
   return haskellOutput.join('\n');
 }
 
-
-
 /**
- * Mappings that account for received ether, with the price of one unit:
+ * Finds the mappings that account for received ether ("ledgers"), together
+ * with the price of one unit:
  *  - `m[k] += msg.value`                                   -> price 1 (wei)
  *  - `require(msg.value == n * PRICE); ... m[k] += n;`     -> price PRICE
  * (PRICE must be a numeric literal or constant). They get the solvency
  * invariant `mBal m * price <= contract balance` (see liquidConditions.js).
  * A mapping credited with different prices gets no invariant.
+ *
+ * @function findLedgerMappings
+ * @param {Object} fnInfo - Output of gatherFunctionDefinitions.
+ * @param {Object} stateInfo - Output of gatherStateDefinitions.
  * @returns {Array<{name: string, price: string}>}
  */
 function findLedgerMappings(fnInfo, stateInfo) {
   const prices = new Map(); // mapping name -> Set of prices
-  const isMsgValue = e => e && e.type === 'MemberAccess' && e.memberName === 'value' && e.expression.name === 'msg';
   const literal = e => {
     const code = translateExpression(e, [], stateInfo);
     return /^[0-9]+$/.test(code) ? code : null;
-  };
-  const walk = (node, f) => {
-    if (!node || typeof node !== 'object') return;
-    f(node);
-    Object.values(node).forEach(child => Array.isArray(child) ? child.forEach(c => walk(c, f)) : walk(child, f));
   };
 
   for (const fn of fnInfo.functions) {
     // Unit prices fixed by `require(msg.value == n * PRICE)`: identifier n -> PRICE.
     const unitPrice = new Map();
-    walk(fn.body, node => {
+    walkAst(fn.body, node => {
       if (node.type !== 'FunctionCall' || node.expression.name !== 'require') return;
       const cond = node.arguments[0];
       if (!cond || cond.type !== 'BinaryOperation' || cond.operator !== '==') return;
@@ -146,7 +138,7 @@ function findLedgerMappings(fnInfo, stateInfo) {
       }
     });
 
-    walk(fn.body, node => {
+    walkAst(fn.body, node => {
       if (node.type !== 'BinaryOperation' || node.operator !== '+=' ||
           node.left.type !== 'IndexAccess' || node.left.base.type !== 'Identifier') return;
       const mapping = stateInfo.variables.find(v => v.isMapping && v.originalName === node.left.base.name);
@@ -163,31 +155,5 @@ function findLedgerMappings(fnInfo, stateInfo) {
     .filter(([, set]) => set.size === 1)
     .map(([name, set]) => ({ name, price: [...set][0] }));
 }
-
-// TODO: move function to separate file
-function generateCallFunction(moduleName, stateInfo){
-  const filteredNames = stateInfo.variables
-  // Todo menos 'balance' queda igual tras la llamada. Incluye los mappings:
-  // en la refinación `==` es igualdad lógica (no necesita instancia Eq), y
-  // hace falta para que la invariante de solvencia sobreviva a un transfer.
-  .filter(variable => variable.name !== 'balance' + moduleName)
-  .map(variable => variable.name);
-
-  const equalityConditions = filteredNames
-  .map(name => `(${name} ctx' == ${name} ctx)`)
-  .join(' && ');
-
-
-  return `
-{-@ call${moduleName} :: ctx:${moduleName}State
-           -> Address
-           -> amount: {Amount | 0 <= amount && amount <= balance${moduleName} ctx}
-           -> ctx':{ ${moduleName}State | balance${moduleName} ctx' == balance${moduleName} ctx - amount  && ${equalityConditions}}
-@-}
-call${moduleName}:: ${moduleName}State -> Address -> Amount -> ${moduleName}State
-call${moduleName} ctx _addr amount = ctx { balance${moduleName} = balance${moduleName} ctx - amount }
-`
-}
-
 
 module.exports = { solidityToHaskell };

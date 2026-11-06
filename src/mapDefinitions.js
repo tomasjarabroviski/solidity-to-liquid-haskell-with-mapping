@@ -4,14 +4,14 @@
  * Map.hs and MapWithBalance.hs) so the generated Haskell module can represent
  * Solidity `mapping(KeyType => uint)` state variables as a `BalancedMap KeyType`.
  *
- * This is the extension described in the "Trabajo futuro" section of the thesis
- * (Consoli, 2025): mappings are modeled with a Map structure whose operations
- * (get/set) come with Liquid Haskell refinements, and a running total (`mBal`)
- * that is kept in sync with the sum of all values (`sumBids`) so that functions
- * like `require(balances[msg.sender] >= amount)` and `balances[to] += amount`
- * can be verified the same way scalar balances already are in this tool
- * (see BankExamples.hs / AnotherVerySimpleBankExample.hs for the hand-written
- * version of this same pattern).
+ * This is the extension proposed as future work in the thesis this tool
+ * builds on (Consoli, 2025): mappings are modeled with a Map structure whose
+ * operations (get/set) come with Liquid Haskell refinements, and a running
+ * total (`mBal`) that is kept in sync with the sum of all values (`sumBids`),
+ * so that functions like `require(balances[msg.sender] >= amount)` and
+ * `balances[to] += amount` can be verified the same way scalar balances
+ * already are in this tool. The thesis' hand-written bank examples follow
+ * this same pattern.
  *
  * Only ONE map value type is supported for now: non-negative Int (i.e.
  * Solidity's `uint`), which covers the overwhelming majority of real-world
@@ -31,11 +31,11 @@
 
 const MAP_DEFINITION = `
 -- ============================================================
--- Map / MapWithBalance: soporte para mapping(KeyType => uint)
+-- Map / MapWithBalance: support for mapping(KeyType => uint)
 -- ============================================================
--- Un mapping de Solidity se traduce como un BalancedMap KeyType. Leer una
--- clave ausente da 0 (currentBalance), igual que en Solidity, y set/get sobre
--- el mapa mantienen automaticamente la invariante mBal == sumBids (mMap m).
+-- A Solidity mapping is translated as a BalancedMap KeyType. Reading a
+-- missing key gives 0 (currentBalance), as in Solidity, and set/get on the
+-- map automatically keep the invariant mBal == sumBids (mMap m).
 
 {-@ reflect notIn @-}
 notIn :: Eq k => k -> [(k, v)]  -> Bool
@@ -90,14 +90,14 @@ lemma_mem m@((x, _) : xs) k =  assert (lemma_mem2 m k) $ assert (lemma_mem3 m) $
 lemma_mem2 :: Eq k => Map k v -> k -> Bool
 lemma_mem2 [_] _ = True
 lemma_mem2 (_ : xs ) k = lemma_mem2 xs k
-lemma_mem2 [] _ = True  -- caso imposible, pero satisface a GHC
+lemma_mem2 [] _ = True  -- impossible case, only here to satisfy GHC
 
 {-@ reflect lemma_mem3 @-}
 {-@ lemma_mem3 ::  {m : Map k v | len m > 0} ->  {v : Bool | isUniq (tail m)} @-}
 lemma_mem3 :: Eq k => Map k v -> Bool
 lemma_mem3 [_] = True
 lemma_mem3 (_ : xs )= lemma_mem3 xs
-lemma_mem3 [] = True  -- caso imposible, pero satisface a GHC
+lemma_mem3 [] = True  -- impossible case, only here to satisfy GHC
 
 {-@reflect get @-}
 {-@ get :: (Eq k) => m : Map k v ->  key : {k | Set_mem key (keys m)}  ->
@@ -187,14 +187,14 @@ lemma_key_notin_toSet :: Eq k => Map k v -> k -> v -> Bool
 lemma_key_notin_toSet [] _ _ = True
 lemma_key_notin_toSet (_ : xs) k v = lemma_key_notin_toSet xs k v
 
---Lema Matematico assume: si x not-in s, entonces ({x} cup s) \\ {x} = s.
+-- Assumed set lemma: if x is not in s, then ({x} cup s) \\ {x} = s.
 {-@ reflect lemma_dif_cup_self @-}
 {-@ assume lemma_dif_cup_self :: s : S.Set t -> x : {t | not (Set_mem x s)}
       -> {b : Bool | Set_dif (Set_cup (Set_sng x) s) (Set_sng x) == s} @-}
 lemma_dif_cup_self :: S.Set t -> t -> Bool
 lemma_dif_cup_self _ _ = True
 
---Lema Matematico assume: (s cup t) \\ u = (s \\ u) cup (t \\ u).
+-- Assumed set lemma: (s cup t) \\ u = (s \\ u) cup (t \\ u).
 {-@ reflect lemma_set_dist_r_dif_union @-}
 {-@ assume lemma_set_dist_r_dif_union :: s: S.Set k -> t : S.Set k -> u: S.Set k -> {v : Bool | Set_dif (Set_cup s t) u == Set_cup (Set_dif s u)  (Set_dif t u) } @-}
 lemma_set_dist_r_dif_union :: S.Set k  -> S.Set k -> S.Set k ->  Bool
@@ -336,7 +336,7 @@ lemma_getWB_setWB_other (MB xs _) key value key'
       assert (lemma_get_add_other xs key value key') $
       True
 
--- ---- Lectura con default 0, como Solidity: leer una clave ausente da 0 ----
+-- ---- Read with default 0, as in Solidity: a missing key reads as 0 ----
 
 {-@ reflect currentBalance @-}
 {-@ currentBalance :: (Ord k) => m:BalancedMap k -> key:k -> {v:Int | InRange v} @-}
@@ -367,9 +367,9 @@ lemma_currentBalance_setWB_other m key value key'
       currentBalance (setWB m key value) key' == currentBalance m key'
   | otherwise = currentBalance (setWB m key value) key' == currentBalance m key'
 
--- Cada valor del mapa es <= la suma total (los valores son no negativos).
--- Es lo que permite probar que un retiro de balances[k] no supera el ether
--- del contrato cuando vale la invariante mBal <= balance del contrato.
+-- Every value of the map is <= the total sum (values are non-negative).
+-- This is what proves that withdrawing balances[k] does not exceed the
+-- contract's ether when the invariant mBal <= contract balance holds.
 {-@ reflect lemma_get_le_sumBids @-}
 {-@ lemma_get_le_sumBids :: m:Map k {v:Int | v >= 0} -> key:{k | Set_mem key (keys m)}
       -> {b:Bool | get m key <= sumBids m} @-}
@@ -377,7 +377,7 @@ lemma_get_le_sumBids :: Eq k => Map k Int -> k -> Bool
 lemma_get_le_sumBids ((k, _) : xs) key
   | k == key  = lemma_sumBids_nonneg xs
   | otherwise = lemma_get_le_sumBids xs key
-lemma_get_le_sumBids [] _ = True  -- caso imposible, pero satisface a GHC
+lemma_get_le_sumBids [] _ = True  -- impossible case, only here to satisfy GHC
 
 {-@ reflect lemma_currentBalance_le_mBal @-}
 {-@ lemma_currentBalance_le_mBal :: m:BalancedMap k -> key:k
@@ -393,8 +393,9 @@ lemma_currentBalance_le_mBal m key
       assert (lemma_sumBids_nonneg (mMap m)) $
       True
 
--- Igual que el anterior pero sin exigir key' /= key: el traductor lo usa para
--- toda clave del mismo mapping que lee la funcion, sin saber si son iguales.
+-- Same as lemma_currentBalance_setWB_other but without requiring key' /= key:
+-- the translator uses it for every key of the same mapping that the function
+-- reads, without knowing whether they are equal.
 {-@ reflect lemma_currentBalance_setWB_maybe_other @-}
 {-@ lemma_currentBalance_setWB_maybe_other :: m:BalancedMap k -> key:k -> value:{Int | InRange value}
       -> key':k

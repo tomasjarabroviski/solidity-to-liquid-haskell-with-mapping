@@ -1,4 +1,4 @@
-# Solidity to Haskell Converter
+# Solidity to Liquid Haskell Translator
 
 A tool that translates Solidity smart contracts to Liquid Haskell code, preserving the contract's logic while adding formal verification capabilities through Liquid Haskell's refinement types.
 
@@ -9,7 +9,9 @@ A tool that translates Solidity smart contracts to Liquid Haskell code, preservi
 - Handles enums, state variables, and function parameters
 - Converts Solidity types to appropriate Haskell types
 - Handles `mapping(address => uint)` via a verified `MapWithBalance` structure
-- Generates Liquid Haskell refinement types from require/assert conditions
+- Generates Liquid Haskell refinement types: `require` conditions become preconditions, each
+  `assert` is verified at the point where it is written, and the asserts that end a function
+  also become postconditions
 - Web interface for interactive conversion **and real Liquid Haskell verification**
 - Command-line tools for batch processing
 
@@ -153,15 +155,17 @@ Accepts any `.sol` path (one or several). It runs the same command as the web in
 (`cabal exec -- ghc -fplugin=LiquidHaskell -fno-code`) and prints one result per file:
 
 - `SAFE` / `UNSAFE` — Liquid Haskell's verdict.
-- `SAFE (con N sentencias no traducidas)` — SAFE, but N statements/expressions were not
+- `SAFE (N untranslated statements)` — SAFE, but N statements/expressions were not
   translated (emitted as `TODO` or `undefined`), so the result may be vacuous.
 - `ERROR` — the generated Haskell does not compile (unlike the web UI, this is not reported as UNSAFE).
 - `PARSE ERROR` / `TRANSLATOR CRASH` — the Solidity parser or the translator failed.
+- `FILE NOT FOUND` — the path doesn't exist (paths are relative to where the command is run,
+  normally the repository root).
 
 ```bash
 npm run verify -- benchmarks/ethernaut/original/Token.sol
 npm run verify -- a.sol b.sol --overflow
-VERBOSE=1 npm run verify -- Token.sol
+VERBOSE=1 npm run verify -- benchmarks/ethernaut/original/Token.sol
 ```
 
 Flags:
@@ -174,7 +178,7 @@ Flags:
 ##### Run the benchmarks (`run_benchmarks.js`)
 
 Recursively verifies every `.sol` under `benchmarks/` (or the directory passed as argument)
-and prints `OK`/`FAIL` per file plus a summary (`X/Y coinciden con lo esperado`). It is slow:
+and prints `OK`/`FAIL` per file plus a summary (`X/Y match the expected result`). It is slow:
 it runs Liquid Haskell once per file.
 
 ```bash
@@ -186,8 +190,8 @@ npm run bench -- benchmarks/smartbugs --overflow
 
 The expected result for each file is read from a comment in the contract:
 
-- `// Esperado: SAFE|UNSAFE` — expected result in the default mode.
-- `// Esperado con --overflow: SAFE|UNSAFE` — expected result with `--overflow`; takes
+- `// Expected: SAFE|UNSAFE` — expected result in the default mode.
+- `// Expected with --overflow: SAFE|UNSAFE` — expected result with `--overflow`; takes
   precedence over the previous one in that mode.
 - A file under an `original/` folder with no comment is expected to be `UNSAFE`
   (SmartBugs ground truth: all those contracts are vulnerable).
@@ -215,16 +219,18 @@ npm run test
 ## Project Structure
 
 - `src` - Source code
-  - `index.js` - Main conversion logic
-  - `gatherState.js` - State variable processing
-  - `gatherFunctions.js` - Function processing
-  - `generateData.js` - Haskell data type generation
-  - `generateFunctions.js` - Haskell function generation
-  - `liquidConditions.js` - Refinement type generation
-  - `typeMappings.js` - Type conversion utilities
+  - `index.js` - Entry point (`solidityToHaskell`): parses the contract and assembles the module
+  - `gatherState.js` - Collects state variables, enums and constants
+  - `gatherFunctions.js` - Collects function definitions
+  - `generateData.js` - Generates the state record and enum types
+  - `generateFunctions.js` - Generates the Haskell functions, the `call<Contract>` ether model and `revert`
+  - `liquidConditions.js` - Generates refinement types (require/assert, solvency invariant)
+  - `translator.js` - Translates Solidity expressions and statements
+  - `typeMappings.js` - Solidity-to-Haskell types and the shared prelude (`Message`, `Block`, `Uint`...)
   - `mapDefinitions.js` - `MapWithBalance` structure used for `mapping(address => uint)`
-  - `translator.js` - AST translation utilities
+  - `astUtils.js` - Small shared helpers (identifier normalization, AST walking)
   - `server.js` - Web server (conversion + real Liquid Haskell validation)
+  - `public/` - Web interface (`index.html`)
   - `verify/` - Minimal cabal project bundled only to have `liquidhaskell` already
     resolved as a dependency, so `server.js` can run real verification
     (`cabal exec -- ghc -fplugin=LiquidHaskell -fno-code <file>`) on whatever the
@@ -232,8 +238,10 @@ npm run test
     module — you never need to edit anything inside it, just build it once
     (see Installation).
 - `scripts` - Command line tools
-- `public` - Web interface (`index.html`)
 - `test_contracts` - Example Solidity contracts
+- `benchmarks` - Verification benchmarks (SmartBugs, Ethernaut, DeFiVulnLabs, plus `regression/`
+  cases for past translator bugs) with their expected results
+- `azure_require` - Azure blockchain workbench sample contracts
 - `__tests__` - Unit tests
 
 ## Notes

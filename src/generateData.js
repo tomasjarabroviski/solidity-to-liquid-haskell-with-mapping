@@ -1,47 +1,48 @@
 /**
  * @file generateData.js
- * @description Exports functionality to generate Haskell `data` definitions from Solidity state variables and enums.
+ * @description Generates the Haskell `data` definitions of a contract: its
+ *   enums and its state record.
  */
 
 const { generateEnumType } = require('./gatherState');
 
 /**
- * Generates a Haskell `data` definition for the contract's state using the state variables and enums.
- * 
+ * Generates the enum types and the state record of a contract. The record
+ * is emitted twice: as a Liquid Haskell `data` spec (so its fields'
+ * refinements, such as `Uint`, are enforced) and as the plain Haskell type.
+ *
  * @function generateHaskellData
- * @param {string} contractName - The name of the Solidity contract (used as the Haskell type name).
- * @param {Object} stateInfo - An object containing:
- *   - `variables`: An array of state variables with names and Haskell types.
- *   - `enums`: An array of enum definitions.
- * @returns {string} A string representing the Haskell `data` type definition.
- * 
+ * @param {string} contractName - Contract name (the record is `<Name>State`).
+ * @param {Object} stateInfo - Output of gatherStateDefinitions.
+ * @returns {string} The Haskell definitions.
+ *
  * @example
- * // If stateInfo contains:
- * //   variables = [{ name: 'count', type: 'Integer' }, { name: 'owner', type: 'String' }],
- * //   enums = [{ name: 'StateType', members: ['Pending', 'Approved'] }],
- * // and contractName = 'Counter',
- * // the result might be:
- * // "data StateType = Pending | Approved deriving (Show, Eq)\n\ndata CounterState = CounterState {\n  count :: Integer,\n  owner :: String\n}"
+ * // For contract `Counter` with `uint count`:
+ * // {-@ data CounterState = CounterState {
+ * //   msgCounter :: Message,
+ * //   ...
+ * //   countCounter :: Uint
+ * // }
+ * // @-}
+ * // data CounterState = CounterState { ...same fields... }
  */
 function generateHaskellData(contractName, stateInfo) {
-  let output = [];
+  const output = [];
 
-  // Generate enum types first
   if (stateInfo.enums) {
-    for (let enumDef of stateInfo.enums) {
+    for (const enumDef of stateInfo.enums) {
       output.push(generateEnumType(enumDef));
     }
-    output.push(''); // Add a blank line
+    output.push('');
   }
 
-  // Generate state data type
   if (stateInfo.variables.length === 0) {
     output.push(`data ${contractName}State = ${contractName}State`);
   } else {
     const lines = stateInfo.variables
       .map((v) => `  ${v.name} :: ${v.type}`)
       .join(',\n');
-    contractState = `data ${contractName}State = ${contractName}State {\n${lines}\n}`;
+    const contractState = `data ${contractName}State = ${contractName}State {\n${lines}\n}`;
     output.push(`{-@ ${contractState}\n@-} \n`);
     output.push(contractState);
   }

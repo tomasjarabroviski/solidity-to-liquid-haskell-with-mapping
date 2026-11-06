@@ -1,8 +1,8 @@
 const {
     generateLiquidAnnotation,
     expressionToLiquidPredicate,
-    extractAssertConditions,
     extractRequireConditions,
+    splitAsserts,
     LIQUID_ANNOTATIONS
 } = require('../src/liquidConditions');
 
@@ -49,28 +49,20 @@ describe('generateLiquidAnnotation', () => {
         expect(result).toContain('(balance) == (amount)');
     });
 
-    test('handles assert conditions', () => {
-        const fn = {
-            name: 'test',
-            body: [{
-                type: 'ExpressionStatement',
-                expression: {
-                    type: 'FunctionCall',
-                    expression: { name: 'assert' },
-                    arguments: [{
-                        type: 'BinaryOperation',
-                        operator: '==',
-                        left: { name: 'x' },
-                        right: { name: 'y' }
-                    }]
-                }
-            }],
-            params: []
-        };
+    test('splitAsserts: only the asserts that end the body (before a final return) are ending', () => {
+        const assertStmt = name => ({
+            type: 'ExpressionStatement',
+            expression: { type: 'FunctionCall', expression: { name: 'assert' }, arguments: [{ name }] }
+        });
+        const other = { type: 'ExpressionStatement', expression: { type: 'OtherExpression' } };
+        const ret = { type: 'ReturnStatement', expression: null };
+        const [a, b, c] = [assertStmt('a'), assertStmt('b'), assertStmt('c')];
 
-        const result = generateLiquidAnnotation('Test', fn, [], {});
-        expect(result).toContain('v:TestState');
-        expect(result).toContain('(x) == (y)');
+        expect(splitAsserts([a, other, b, c, ret])).toEqual({ ending: [b, c], other: [a] });
+        // An early return means no assert is reached on every path.
+        const earlyReturn = { type: 'IfStatement', trueBody: ret };
+        expect(splitAsserts([earlyReturn, b, c])).toEqual({ ending: [], other: [b, c] });
+        expect(splitAsserts(null)).toEqual({ ending: [], other: [] });
     });
 
     test('handles parameter conditions', () => {
@@ -141,11 +133,6 @@ describe('liquidConditions utilities', () => {
         const result = extractRequireConditions(null);
         expect(result).toEqual([]);
     });
-
-    test('extractAssertConditions handles null body', () => {
-        const result = extractAssertConditions(null);
-        expect(result).toEqual([]);
-    });
 });
 
 describe('extractConditions', () => {
@@ -165,21 +152,6 @@ describe('extractConditions', () => {
         const requires = extractRequireConditions(body);
         expect(requires).toHaveLength(1);
         expect(requires[0].type).toBe('BinaryOperation');
-    });
-
-    test('extracts assert conditions', () => {
-        const body = [{
-            type: 'ExpressionStatement',
-            expression: {
-                type: 'FunctionCall',
-                expression: { name: 'assert' },
-                arguments: [{ type: 'BinaryOperation' }]
-            }
-        }];
-
-        const asserts = extractAssertConditions(body);
-        expect(asserts).toHaveLength(1);
-        expect(asserts[0].type).toBe('BinaryOperation');
     });
 });
 

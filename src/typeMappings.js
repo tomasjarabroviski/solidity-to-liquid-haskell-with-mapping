@@ -1,27 +1,29 @@
 /**
  * @file typeMappings.js
- * @description Provides functions for mapping Solidity types to Haskell types.
+ * @description Maps Solidity types to Haskell types, and defines the shared
+ *   prelude of every generated module: the `Message` and `Block` records, the
+ *   numeric types (`Uint`, `Amount`, `Address`) and, in overflow mode, the
+ *   wrapping arithmetic helpers.
  */
 
 /**
- * Maps a Solidity TypeName node to an approximate Haskell type.
- * 
+ * Maps a Solidity TypeName node to a Haskell type.
+ *
  * @function solidityTypeToHaskellType
  * @param {Object} typeNode - The AST node representing a Solidity type.
- * @param {string} [contractName=''] - The name of the contract (used for user-defined types).
- * @returns {string} The corresponding Haskell type as a string. Defaults to 'UnknownType' if no mapping is found.
- * 
+ * @param {string} [contractName=''] - The name of the contract (suffix of user-defined types).
+ * @returns {string} The corresponding Haskell type: 'UnknownType' (or
+ *   'UnknownType_<name>' for an unsupported elementary type) if there is none.
+ *
  * @example
- * // For a node representing 'uint256', it returns 'Integer'.
- * // For a node representing 'bool', it returns 'Bool'.
- * // For a node representing 'string', it returns 'String'.
+ * // uint256 -> 'Uint', int8 -> 'Integer', bool -> 'Bool',
+ * // string -> 'String', address -> 'Address', enum E in contract C -> 'EC'.
  */
-function solidityTypeToHaskellType(typeNode, contractName='') {
+function solidityTypeToHaskellType(typeNode, contractName = '') {
   if (!typeNode) return 'UnknownType';
 
   switch (typeNode.type) {
     case 'ElementaryTypeName': {
-      // Examples include 'uint256', 'bool', 'string', etc.
       const name = typeNode.name;
       if (name.startsWith('uint')) {
         return 'Uint';
@@ -37,8 +39,8 @@ function solidityTypeToHaskellType(typeNode, contractName='') {
       return `UnknownType_${name}`;
     }
     case 'UserDefinedTypeName': {
-      // For user-defined types (e.g., enums), return the type name directly.
-      return typeNode.namePath ? typeNode.namePath + contractName  : 'UnknownType';
+      // Enums (and other user-defined types) are suffixed with the contract name.
+      return typeNode.namePath ? typeNode.namePath + contractName : 'UnknownType';
     }
     default:
       return 'UnknownType';
@@ -46,11 +48,16 @@ function solidityTypeToHaskellType(typeNode, contractName='') {
 }
 
 /**
- * A predefined Haskell `Message` data type and an `Address` type alias for use in generated code.
- * 
+ * Shared Haskell definitions of every generated module:
+ *  - `fromString`: a deterministic, non-negative hash of a string, used as
+ *    the address of a contract.
+ *  - `Message` (msg.sender, msg.value) and `Block` (block.number,
+ *    block.timestamp).
+ *  - The numeric types: `Uint` (a value within the uint range, InRange), `Amount` (an
+ *    ether amount, >= 0) and `Address`.
+ *
  * @constant MSG_DEFINITION
  * @type {string}
- * @example
  */
 const MSG_DEFINITION = `import Data.Char (ord)
 
@@ -161,7 +168,12 @@ addEther a b = a + b
 `;
 
 /**
- * Shared prelude (Message, Block, numeric types) for the generated module.
+ * Shared prelude of the generated module: MSG_DEFINITION plus the range
+ * predicates and, in overflow mode, the overflow helpers.
+ *
+ * @function msgDefinition
+ * @param {boolean} [checkOverflow=false] - Whether overflow checking is on.
+ * @returns {string} The Haskell definitions.
  */
 function msgDefinition(checkOverflow = false) {
   return [

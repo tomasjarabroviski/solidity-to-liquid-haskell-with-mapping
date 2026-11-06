@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * @file verify_contract.js
- * @description Converts one or more .sol files to Liquid Haskell and runs real
- *              verification (same command as server.js), printing SAFE/UNSAFE.
+ * @description Converts one or more .sol files to Liquid Haskell and runs
+ *   real verification (same command as server.js), printing SAFE/UNSAFE.
  *
  * Usage: node scripts/verify_contract.js <file.sol> [more.sol ...] [--keep] [--overflow]
  *        --overflow: also check uint overflow (see solidityToHaskell's checkOverflow)
@@ -18,14 +18,28 @@ const { solidityToHaskell } = require('../src/index');
 const CABAL_PROJECT_DIR = path.join(__dirname, '../src/verify');
 
 /**
- * Returns { result, output, hsFile } where result is one of SAFE, UNSAFE,
- * ERROR (generated Haskell doesn't compile), PARSE ERROR or TRANSLATOR CRASH.
- * Unlike the web UI, a compile error is NOT reported as UNSAFE.
+ * Translates and verifies one contract.
+ *
+ * @param {string} file - Path of the .sol file.
+ * @param {Object} [options]
+ * @param {boolean} [options.keep=false] - Keep the generated .hs file.
+ * @param {boolean} [options.checkOverflow=false] - Check uint overflow.
+ * @returns {{result: string, output: string, hsFile?: string|null}} `result`
+ *   is SAFE, UNSAFE, ERROR (the generated Haskell doesn't compile), PARSE
+ *   ERROR, TRANSLATOR CRASH or FILE NOT FOUND. Unlike the web UI, a compile error is NOT
+ *   reported as UNSAFE.
  */
 function verifyContract(file, { keep = false, checkOverflow = false } = {}) {
+  let source;
+  try {
+    source = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    return { result: 'FILE NOT FOUND', output: error.message };
+  }
+
   let haskell;
   try {
-    haskell = solidityToHaskell(fs.readFileSync(file, 'utf8'), { checkOverflow });
+    haskell = solidityToHaskell(source, { checkOverflow });
   } catch (error) {
     return { result: 'TRANSLATOR CRASH', output: error.stack };
   }
@@ -55,7 +69,7 @@ function verifyContract(file, { keep = false, checkOverflow = false } = {}) {
   // more executions, so it can't turn an UNSAFE into a SAFE.
   const ignored = haskell.split('\n')
     .filter(l => /-- TODO|-- skipped|\bundefined\b/.test(l) && !/-- skipped require statement/.test(l)).length;
-  if (result === 'SAFE' && ignored > 0) result = `SAFE (con ${ignored} sentencias no traducidas)`;
+  if (result === 'SAFE' && ignored > 0) result = `SAFE (${ignored} untranslated statements)`;
 
   if (!keep) fs.rmSync(dir, { recursive: true, force: true });
   return { result, output, hsFile: keep ? hsFile : null };
