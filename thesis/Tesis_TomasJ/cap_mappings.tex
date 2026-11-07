@@ -68,11 +68,17 @@ valores. La traducción debe preservar las siguientes propiedades:
   \item[Escrituras locales.] Las sentencias \lstinline|m[k] = e|, \lstinline|m[k] += e|
     y \lstinline|m[k] -= e| modifican únicamente la entrada \lstinline|k|; el resto
     del \emph{mapping} no cambia.
-  \item[Valores no negativos.] Los valores de tipo \lstinline|uint| nunca son
-    negativos. En este capítulo los enteros se interpretan como enteros matemáticos
-    sin desbordamiento\footnote{El tratamiento del desbordamiento aritmético de
-    \lstinline|uint| se presenta en un capítulo posterior.}, por lo que la única
-    restricción es que todo valor almacenado sea mayor o igual a $0$.
+  \item[Rango de los valores.] Los valores de tipo \lstinline|uint| son enteros entre
+    $0$ y $2^{256}-1$. La herramienta representa este rango con el predicado
+    $\mathit{InRange}$, que tiene dos definiciones según el modo en que se ejecute:
+    \begin{itemize}
+      \item en el modo por defecto, $\mathit{InRange}(v) \equiv v \geq 0$, es decir,
+        los enteros se interpretan como enteros matemáticos, sin cota superior;
+      \item en el modo de detección de desbordamiento, que se presenta en un capítulo
+        posterior, $\mathit{InRange}(v) \equiv 0 \leq v \leq 2^{256}-1$.
+    \end{itemize}
+    En este capítulo usamos el modo por defecto, de modo que la única restricción
+    sobre un valor almacenado es que sea mayor o igual a $0$.
 \end{description}
 
 La última propiedad es la que convierte a los \emph{mappings} en una fuente de
@@ -119,8 +125,8 @@ Las definiciones se leen de la siguiente manera:
     refinados.
   \item \lstinline[language=LHaskell]|MapWithBalance k| acompaña al mapa con un campo
     \lstinline|mBal| que guarda la suma de sus valores. Los valores del mapa deben
-    cumplir el predicado \lstinline|InRange|, que en este capítulo expresa que son no
-    negativos.
+    cumplir el predicado $\mathit{InRange}$ definido en la
+    Sección~\ref{sec:mappings-semantica}.
   \item \lstinline[language=LHaskell]|BalancedMap k| es el tipo que efectivamente usa la
     traducción: un \lstinline|MapWithBalance| cuyo campo \lstinline|mBal| coincide con
     la suma real de sus valores. Este invariante es parte del tipo, por lo que toda
@@ -155,45 +161,75 @@ setWB          :: m:BalancedMap k -> key:k -> val:{Int | InRange val}
   \item \lstinline|setWB m key val| asocia \lstinline|val| a \lstinline|key|, ya sea
     agregando la clave o reemplazando su valor anterior, y actualiza la suma: se resta
     el valor previo y se suma el nuevo. Su argumento \lstinline|val| debe cumplir
-    \lstinline|InRange|; esta precondición es la que permite detectar saldos negativos.
+    $\mathit{InRange}$; esta precondición es la que permite detectar saldos negativos.
 \end{itemize}
 
 Los tipos de la Tabla~\ref{tab:map-interfaz} resumen las especificaciones de la
 biblioteca, que están expresadas en términos de la pertenencia de la clave al mapa y
-de la función \lstinline|get|. En conjunto, la biblioteca establece las siguientes
-garantías, para todo mapa \lstinline|m|, claves \lstinline|k| y \lstinline|k'|, y
-valor \lstinline|v| que cumpla \lstinline|InRange|:
+de la función \lstinline|get|. Para enunciar con precisión las garantías que se
+obtienen de ellas usamos la siguiente notación: $m[k]$ denota
+\lstinline|currentBalance m k|, $m[k \mapsto v]$ denota \lstinline|setWB m k v|, y
+$\mathrm{dom}(m)$ es el conjunto de claves presentes en $m$. Entonces, para todo
+mapa, todo par de claves y todo valor en rango,
+\[
+  \forall\, m : \mathit{BalancedMap}\ K,\quad
+  \forall\, k, k' \in K,\quad
+  \forall\, v \text{ tal que } \mathit{InRange}(v),
+\]
+se cumplen las siguientes propiedades:
 
 \begin{description}
-  \item[Lectura por defecto.] Si \lstinline|k| no está en el mapa,
-    \lstinline|currentBalance m k == 0|; en particular, toda lectura sobre
+  \item[Lectura por defecto.] $k \notin \mathrm{dom}(m) \;\Rightarrow\; m[k] = 0$.\\
+    Una clave ausente se lee como $0$; en particular, toda lectura sobre
     \lstinline|empWB| da $0$.
-  \item[Lectura tras escritura.] \lstinline|currentBalance (setWB m k v) k == v|.
-  \item[Marco.] Si \lstinline|k' /= k|, entonces
-    \lstinline|currentBalance (setWB m k v) k' == currentBalance m k'|: escribir una
-    clave no modifica las demás.
-  \item[Suma.] \lstinline|mBal (setWB m k v) == mBal m - currentBalance m k + v|, y el
-    invariante \lstinline|sumBids (mMap m) == mBal m| se preserva.
-  \item[Cota.] \lstinline|currentBalance m k <= mBal m|: ningún valor supera la suma.
+  \item[Lectura tras escritura.] $m[k \mapsto v][k] = v$.\\
+    Después de escribir $v$ en la clave $k$, leer $k$ devuelve $v$.
+  \item[Marco.] $k' \neq k \;\Rightarrow\; m[k \mapsto v][k'] = m[k']$.\\
+    Escribir una clave no modifica el valor de las demás.
+  \item[Suma.] $\mathit{mBal}(m[k \mapsto v]) = \mathit{mBal}(m) - m[k] + v$.\\
+    La suma se actualiza restando el valor anterior de la clave y sumando el nuevo.
+  \item[Invariante.] $\mathit{mBal}(m) = \sum_{(j,\,x) \in \mathit{mMap}(m)} x$.\\
+    El campo \lstinline|mBal| coincide siempre con la suma de los valores del mapa;
+    es el refinamiento que define al tipo \lstinline|BalancedMap|.
+  \item[Cota.] $m[k] \leq \mathit{mBal}(m)$.\\
+    Ningún valor supera la suma, ya que todos los valores son no negativos.
 \end{description}
 
-Estas garantías están verificadas por Liquid Haskell dentro de la propia biblioteca,
-mediante lemas auxiliares sobre listas y conjuntos; solo dos propiedades elementales
-de la teoría de conjuntos se asumen sin prueba. No es necesario conocer esos lemas
-para seguir la traducción.
+Estas garantías se establecen dentro de la propia biblioteca, mediante lemas
+auxiliares sobre listas y conjuntos que no es necesario conocer para seguir la
+traducción.
 
 \section{Traducción de las operaciones}
 \label{sec:mappings-traduccion}
 
-En la traducción base, el estado del contrato se representa con un registro de
-Haskell, cada función de Solidity se traduce en una función que recibe el estado
-actual (\lstinline|st|) y sus parámetros y devuelve el nuevo estado, y una secuencia
-de sentencias se traduce como una cadena de estados intermedios \lstinline|st1|,
-\lstinline|st2|, \ldots{} ligados con \lstinline|let|. Un \lstinline|require| se
-traduce de dos formas: como precondición en el tipo refinado de la función y como una
-sentencia que revierte (\lstinline|revert|) si la condición no se cumple.
+Recordemos brevemente el esquema de la traducción base~\cite{Consoli25}. El estado
+del contrato se representa con un registro de Haskell, y cada función de Solidity se
+traduce en una función que recibe el estado actual (\lstinline|st|) y sus parámetros
+y devuelve el nuevo estado. La función \lstinline|revert| tiene tipo
+\lstinline[language=LHaskell]!{v:String | False} -> a!, por lo que Liquid Haskell solo
+acepta un \lstinline|revert| si puede probar que es inalcanzable. Sobre ese esquema:
 
-Sobre ese esquema, la Tabla~\ref{tab:map-traduccion} muestra cómo se traducen las
+\begin{itemize}
+  \item \textbf{Secuencia.} Una secuencia de sentencias se traduce como una cadena de
+    estados intermedios \lstinline|st1|, \lstinline|st2|, \ldots{} ligados con
+    \lstinline|let|; el último de ellos es el resultado de la función.
+  \item \textbf{\lstinline|require|.} La sentencia \lstinline|require(c)| se traduce de
+    dos formas: como precondición en el tipo refinado de la función y como la
+    sentencia \lstinline[language=LHaskell]|if c then st else revert "error"|, que
+    continúa si la condición se cumple y revierte si no. La precondición es la que
+    permite probar que ese \lstinline|revert| es inalcanzable.
+  \item \textbf{\lstinline|assert|.} La sentencia \lstinline|assert(c)| se traduce
+    como \lstinline[language=LHaskell]|if c then st else revert "assert"|, en el lugar
+    donde está escrita. Como en este caso no hay una precondición que lo respalde,
+    Liquid Haskell debe probar que \lstinline|c| se cumple siempre en ese punto de la
+    función. Además, los \lstinline|assert| con los que termina la función se agregan
+    como postcondiciones de su tipo refinado. Esto modifica la traducción
+    de~\cite{Consoli25}, donde todo \lstinline|assert| se traducía únicamente como
+    postcondición, de modo que un \lstinline|assert| escrito en medio de la función se
+    verificaba sobre el estado final y no sobre el estado en el que está escrito.
+\end{itemize}
+
+Con estas reglas como base, la Tabla~\ref{tab:map-traduccion} muestra cómo se traducen las
 operaciones sobre un \emph{mapping} \lstinline|m| declarado en un contrato
 \lstinline|C|. Al igual que el resto de los campos del estado, su nombre lleva como
 sufijo el nombre del contrato.
@@ -220,24 +256,54 @@ valor inicial & \lstinline[language=LHaskell]|empWB| \\
 
 A continuación aplicamos la traducción al token del Listado~\ref{lst:token}.
 
-\paragraph{Constructor.} El constructor construye el estado inicial completo. El
-\emph{mapping} parte del mapa vacío y, como el constructor escribe una clave, se le
-aplica la escritura correspondiente:
+\paragraph{Estado.} El estado del token se representa con el registro
+\lstinline|TokenState| del Listado~\ref{lst:tokenstate}.
+
+\begin{lstlisting}[language=LHaskell, caption={Estado del token.}, label={lst:tokenstate}]
+data TokenState = TokenState {
+  msgToken      :: Message,
+  blockToken    :: Block,
+  balanceToken  :: Amount,
+  addressToken  :: Address,
+  balancesToken :: BalancedMap Address
+}
+\end{lstlisting}
+
+Los cuatro primeros campos se agregan en todo contrato: el mensaje de la invocación
+en curso (que contiene \lstinline|msg.sender| y \lstinline|msg.value|), los datos del
+bloque, la cantidad de ether que posee el contrato y su propia dirección. El último
+campo es el \emph{mapping} \lstinline|balances|.
+
+\paragraph{Constructor.} El constructor construye el estado inicial completo a partir
+del mensaje y el bloque del despliegue. El \emph{mapping} parte del mapa vacío y, como
+el constructor escribe una clave, se le aplica la escritura correspondiente:
 
 \begin{lstlisting}[language=LHaskell]
+{-@ constructorToken :: Message -> Block
+                     -> {initialSupply:Uint | True}
+                     -> {v:TokenState | True} @-}
 constructorToken msgctx block initialSupply = TokenState
-  { ...
+  { msgToken      = msgctx
+  , blockToken    = block
+  , balanceToken  = 0
+  , addressToken  = fromString "Token"
   , balancesToken = setWB empWB (sender msgctx) initialSupply }
 \end{lstlisting}
 
-\noindent La obligación que impone \lstinline|setWB| es que \lstinline|initialSupply|
-sea no negativo, lo cual se cumple porque el parámetro tiene tipo \lstinline|Uint|.
+\noindent A diferencia del resto de las funciones, el constructor no recibe un estado
+previo: recibe el mensaje (\lstinline|msgctx|) y el bloque (\lstinline|block|) del
+despliegue, y su tipo refinado no tiene precondiciones porque no contiene
+\lstinline|require|. El contrato comienza sin ether, porque el constructor no es
+\lstinline|payable|, y su dirección se obtiene a partir de su nombre. La obligación que
+impone \lstinline|setWB| es que \lstinline|initialSupply| sea no negativo, lo cual se
+cumple porque el parámetro tiene tipo \lstinline|Uint|.
 
-\paragraph{\lstinline|burn|.} La función se traduce de la siguiente manera, donde
-\lstinline|bal| y \lstinline|me| abrevian, respectivamente,
-\lstinline|balancesToken| y \lstinline|sender (msgToken st)|\footnote{En el código
-generado se usan los nombres completos y aparecen además las aserciones de lemas que
-describimos al final de la sección.}:
+\paragraph{\lstinline|burn|.} El Listado~\ref{lst:burn} muestra el código generado
+para \lstinline|burn|. Para facilitar la lectura abreviamos \lstinline|balancesToken|
+como \lstinline|bal|, el remitente \lstinline|sender (msgToken st)| como
+\lstinline|me| (es el mismo en todos los estados intermedios) y el mapa actualizado
+\lstinline|balancesTokenNext| como \lstinline|next|; por lo demás, el código es el que
+produce la herramienta.
 
 \begin{lstlisting}[language=LHaskell, caption={Traducción de \lstinline|burn|.}, label={lst:burn}]
 {-@ burn :: {st:TokenState | True}
@@ -246,16 +312,26 @@ describimos al final de la sección.}:
 burn st amount = let
   st1 = if currentBalance (bal st) me >= amount
           then st else revert "error"
-  st2 = st1 { bal = setWB (bal st1) me (currentBalance (bal st1) me - amount) }
+  st2 = let next = setWB (bal st1) me (currentBalance (bal st1) me - amount)
+        in assert (lemma_currentBalance_get (bal st1) me) $
+           assert (lemma_currentBalance_get next me) $
+           st1 { bal = next }
   in st2
 \end{lstlisting}
 
-El \lstinline|require| aparece dos veces: como precondición sobre \lstinline|amount|
-y como la sentencia que define \lstinline|st1|. La escritura
-\lstinline|balances[msg.sender] -= amount| se traduce en \lstinline|st2|. Para aceptar
-la llamada a \lstinline|setWB|, Liquid Haskell debe probar que el nuevo valor,
-\lstinline|currentBalance (bal st1) me - amount|, es no negativo. Esto se deduce de la
-precondición, ya que \lstinline|st1| es igual a \lstinline|st|.
+El \lstinline|require| aparece dos veces: como precondición y como la sentencia que
+define \lstinline|st1|. La precondición menciona al parámetro \lstinline|amount|, por
+lo que se escribe como refinamiento de ese parámetro y no del estado: en general, una
+condición que menciona parámetros se asocia al último de ellos en la firma, de modo
+que todos estén ligados al leerla. La postcondición es \lstinline|True|, porque la
+función no contiene \lstinline|assert|.
+
+La escritura \lstinline|balances[msg.sender] -= amount| se traduce en
+\lstinline|st2|. Para aceptar la llamada a \lstinline|setWB|, Liquid Haskell debe
+probar que el nuevo valor, \lstinline|currentBalance (bal st1) me - amount|, es no
+negativo. Esto se deduce de la precondición, ya que \lstinline|st1| es igual a
+\lstinline|st|. Las dos aserciones que acompañan a la escritura se explican al final
+de la sección.
 
 Si se elimina el \lstinline|require| de \lstinline|burn|, la precondición desaparece y
 esa obligación ya no puede probarse: Liquid Haskell rechaza la llamada a
@@ -263,8 +339,21 @@ esa obligación ya no puede probarse: Liquid Haskell rechaza la llamada a
 programación (permitir que una cuenta destruya tokens que no tiene) se manifiesta
 como un error de tipos en el código traducido.
 
-\paragraph{\lstinline|transfer|.} La función realiza dos escrituras, que se traducen
-en dos estados consecutivos (usando las mismas abreviaturas):
+\paragraph{\lstinline|transfer|.} Con las mismas abreviaturas, el tipo refinado de
+\lstinline|transfer| es
+
+\begin{lstlisting}[language=LHaskell]
+{-@ transfer :: {st:TokenState | True}
+             -> {to:Address | True}
+             -> {amount:Uint | currentBalance (bal st) me >= amount}
+             -> {v:TokenState | True} @-}
+\end{lstlisting}
+
+\noindent y tiene la misma forma que el de \lstinline|burn|: la condición del
+\lstinline|require| queda asociada a \lstinline|amount|, el único parámetro que
+menciona, y la postcondición es \lstinline|True| porque la función tampoco contiene
+\lstinline|assert|. Las dos escrituras se traducen en dos estados consecutivos
+(omitimos las aserciones de lemas, que son las mismas que en \lstinline|burn|):
 
 \begin{lstlisting}[language=LHaskell]
   st2 = st1 { bal = setWB (bal st1) me (currentBalance (bal st1) me - amount) }
@@ -286,32 +375,45 @@ obligación de la primera escritura deja de poder probarse, y la herramienta rep
 nuevamente el contrato como inseguro. En cambio, la versión original del
 Listado~\ref{lst:token} es verificada por Liquid Haskell.
 
-\paragraph{Lemas en el código generado.} Cada escritura sobre un \emph{mapping} aparece
-en el código generado acompañada de aserciones de la forma
-
-\begin{lstlisting}[language=LHaskell]
-assert (lemma_currentBalance_get (bal st1) me) $ ...
-\end{lstlisting}
-
-\noindent La función \lstinline|assert :: a -> b -> b| ignora su primer argumento y
+\paragraph{Lemas en el código generado.} En el Listado~\ref{lst:burn}, la escritura
+está acompañada de dos aserciones de la forma
+\lstinline[language=LHaskell]|assert (lemma ...) $ ...|. La función
+\lstinline[language=LHaskell]|assert :: a -> b -> b| ignora su primer argumento y
 devuelve el segundo; su único propósito es incorporar al contexto de Liquid Haskell el
-enunciado del lema, que en este caso relaciona \lstinline|currentBalance| con la
-función \lstinline|get| en términos de la cual están especificadas las operaciones
-de la biblioteca. El traductor inserta estos lemas de forma sistemática en cada
-escritura, para que el razonamiento no dependa de que Liquid Haskell descubra por sí
-mismo esa relación. Con el mismo mecanismo se insertan las garantías de marco y de
-cota en las situaciones que lo requieren, que se presentan en capítulos posteriores.
+enunciado del lema. En este caso el lema es \lstinline|lemma_currentBalance_get m k|,
+que relaciona \lstinline|currentBalance| con la función \lstinline|get|: si
+$k \in \mathrm{dom}(m)$, entonces $m[k]$ es el valor que devuelve \lstinline|get|, y
+si no, $m[k] = 0$. Como las especificaciones de \lstinline|setWB| están expresadas en
+términos de \lstinline|get|, este lema es el que permite trasladarlas a las lecturas
+con \lstinline|currentBalance| que aparecen en el código del contrato.
 
-\bigskip
+El traductor inserta los lemas según una regla fija. En cada escritura
+\lstinline|m[k] = e|, \lstinline|m[k] += e| o \lstinline|m[k] -= e|:
 
-El soporte presentado cubre los \emph{mappings} con valores de tipo \lstinline|uint|
-declarados como variables de estado. Quedan fuera los \emph{mappings} con valores de
-otros tipos (como \lstinline|bool| o estructuras), los \emph{mappings} usados como
-parámetros o variables locales, los \emph{mappings} anidados
-(\lstinline|mapping(address => mapping(address => uint))|, usados por ejemplo para
-los permisos de gasto entre cuentas de un token) y la sentencia \lstinline|delete|;
-las sentencias que involucran estos dos últimos casos se reportan como no traducidas.
-Por otro lado, el campo \lstinline|mBal| y la garantía de cota, que en este capítulo
-solo se utilizaron para mantener el invariante del mapa, son las piezas que
-permitirán en el capítulo siguiente relacionar los saldos registrados en un
-\emph{mapping} con el ether que efectivamente posee el contrato.
+\begin{itemize}
+  \item siempre, \lstinline|lemma_currentBalance_get| sobre el mapa anterior y sobre el
+    mapa resultante, para la clave \lstinline|k|;
+  \item en el modo de detección de desbordamiento, además, para cada otra clave del mismo \emph{mapping} que lea la función, el lema de
+    marco \newline\lstinline|lemma_currentBalance_setWB_maybe_other|;
+  \item si el \emph{mapping} registra el ether recibido por el contrato, además, el
+    lema de cota \lstinline|lemma_currentBalance_le_mBal| para la clave escrita y para
+    cada clave del mismo \emph{mapping} que lea la función.
+\end{itemize}
+
+\noindent Las dos últimas situaciones se presentan en capítulos posteriores. En el
+token, que se verifica en el modo por defecto y no recibe ether, solo aparecen las dos
+aserciones del primer caso.
+
+% ---------------------------------------------------------------------------
+% PENDIENTE (párrafo de cierre quitado a pedido; recuperar más adelante):
+%  - Alcance: el soporte cubre mappings con valores uint declarados como
+%    variables de estado. Quedan fuera los mappings con valores de otros tipos
+%    (bool, estructuras), los mappings usados como parámetros o variables
+%    locales, los mappings anidados (mapping(address => mapping(address => uint)),
+%    usados p. ej. para los permisos de gasto de un token) y la sentencia delete;
+%    las sentencias con mappings anidados o delete se reportan como no traducidas.
+%    -> sección de alcance/limitaciones.
+%  - Puente a solvencia: el campo mBal y la garantía de cota, que acá solo
+%    sostienen el invariante del mapa, permiten relacionar los saldos de un
+%    mapping con el ether que posee el contrato. -> capítulo de solvencia.
+% ---------------------------------------------------------------------------
